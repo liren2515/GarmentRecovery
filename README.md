@@ -9,9 +9,7 @@ Download checkpoints from [here](https://drive.google.com/file/d/1Zhr93ejWGobqDn
 Download and extract the SMPL model from http://smplify.is.tue.mpg.de/, and place `basicModel_f_lbs_10_207_0_v1.0.0.pkl` and `basicModel_neutral_lbs_10_207_0_v1.0.0.pkl` in the folder of `./smpl_pytorch`.
 
 ## Install
-The code is implemented with python 3.8, torch 2.0.1 and cuda 11.8 (other versions usually work as well).
-
-Other dependencies include `trimesh`, `pytorch3D`, `scipy`.
+See [INSTALL.md](doc/INSTALL.md)
 
 ## Inference
 For garment generation:
