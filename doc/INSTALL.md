@@ -2,32 +2,19 @@
 
 ## Installing All Modules
 
-- The entire modules can be installed following the instruction below.
-  Note that you may want to install body module only which has fewer dependencies. In this case, you may skip some steps. See below the details. 
-
 - The basic installation
   ```
-  conda create -n venv_frankmocap python=3.7
-  conda activate venv_frankmocap
+  conda create --name py38 python=3.8 -y
+  conda activate py38
+  conda install pytorch==2.0.1 torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia -y && conda install -c fvcore -c iopath -c conda-forge fvcore iopath -y && conda install -c bottler nvidiacub -y && conda install -c conda-forge igl -y && conda install pytorch3d -c pytorch3d -y
 
-  # Install basic dependencies
-  sudo apt-get install libglu1-mesa libxi-dev libxmu-dev libglu1-mesa-dev freeglut3-dev libosmesa6-dev
+  # Install pip dependencies
+  pip install numpy==1.23 chumpy opencv-python torchgeometry rtree h5py plyfile tensorboardX cycler einops kornia mediapipe
+  pip install hydra-core matplotlib scikit-image pyglet==1.5.7 shapely open3d
 
-  # Install ffmpeg
-  sudo apt-get install ffmpeg 
-
-  # Install cuda 
-  # Choose versions based on your system. For example:
-  # conda install cudatoolkit=10.1 cudnn=7.6.0
-
-  # Install pytorch and torchvision 
-  conda install -c pytorch pytorch==1.6.0 torchvision cudatoolkit=10.1
-
-  # Install other required libraries
-  pip install -r docs/requirements.txt
   ```
 
-- Install [Detectron2](https://github.com/facebookresearch/detectron2) (for hand module)
+- Install Pymesh
   - This is required for hand motion capture. You can skip this if you need only body module
   - If you followed the versions mentioned above (pytorch 1.6.0, CUDA 10.1, on Linux), you may try the following:
   ```
