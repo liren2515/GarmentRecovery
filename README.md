@@ -1,5 +1,5 @@
 # Garment Recovery with Shape and Deformation Priors
-<p align="center"><img src="figs/img.png"></p>
+<p align="center"><img src="figs/overview.png"></p>
 
 This is the repo for [**Garment Recovery with Shape and Deformation Priors**](https://liren2515.github.io/page/prior/prior.html).
 
