@@ -118,7 +118,7 @@ def optimize_lat_code(model_isp, latent_codes, uv_vertices, uv_faces, v_indicato
     v_indicator_f_new = v_indicator_f_new > 0.5
     v_indicator_b_new = v_indicator_b_new > 0.5
 
-    return lat_code.detach(), mesh_uv_f, mesh_uv_b, v_indicator_f_new, v_indicator_b_new
+    return lat_code.detach(), v_indicator_f_new, v_indicator_b_new
     
 
 def uv_to_3D(pattern_deform, uv_faces, barycentric_uv, closest_face_idx_uv):
@@ -179,14 +179,15 @@ def compute_normals_per_vertex(
 
     return normalized_sum_normals
 
-def optimize_prior(images, images_body, extractor, extractorBody, featuror, field, uv_features_f, uv_features_b, verts_pose_f, verts_pose_b, verts_pose_raw, vertices_keep, vertices_all, mask_normal, v_indicator_f_target, v_indicator_b_target, transform, transform_100, trans, scale, body, cloth_related, uv_faces, iters=350, idx_collar_f=None, file_loss_path=None, weight_strain=1):
+def optimize_prior(images, images_body, extractor, extractorBody, featuror, field, uv_features_f, uv_features_b, verts_pose_f, verts_pose_b, verts_pose_raw, mask_normal, v_indicator_f_target, v_indicator_b_target, transform, transform_100, trans, scale, body, cloth_related, uv_faces, iters=350, idx_collar_f=None, file_loss_path=None):
 
-    cloth, v_barycentric_f, closest_face_idx_f, v_barycentric_b, closest_face_idx_b, idx_v, waist_edges = cloth_related
+    cloth, v_barycentric_f, closest_face_idx_f, v_barycentric_b, closest_face_idx_b, waist_edges = cloth_related
+    #cloth, v_barycentric_f, closest_face_idx_f, v_barycentric_b, closest_face_idx_b, idx_v, waist_edges = cloth_related
     v_barycentric_f.requires_grad = False
     closest_face_idx_f.requires_grad = False
     v_barycentric_b.requires_grad = False
     closest_face_idx_b.requires_grad = False
-    idx_v.requires_grad = False
+    #idx_v.requires_grad = False
 
     verts_pose_f_2D = (transform.transform_points(verts_pose_f)[:,:,:2]*(-1)).detach()
     verts_pose_b_2D = (transform.transform_points(verts_pose_b)[:,:,:2]*(-1)).detach()
@@ -202,9 +203,6 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
 
     lr = 1e-4
     optimizer = torch.optim.Adam(list(field.parameters()), lr=lr)
-
-    vertices_all.requires_grad = False
-    vertices_keep.requires_grad = False
 
     verts_pose_f.requires_grad = False
     verts_pose_b.requires_grad = False
@@ -270,7 +268,8 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
         verts_f = uv_to_3D(verts_pose_f_new, uv_faces, v_barycentric_f, closest_face_idx_f).squeeze()
         verts_b = uv_to_3D(verts_pose_b_new, uv_faces, v_barycentric_b, closest_face_idx_b).squeeze()
         verts = torch.cat((verts_f, verts_b), dim=0)
-        verts_pose = verts[idx_v]*scale + trans
+        #verts_pose = verts[idx_v]*scale + trans
+        verts_pose = verts*scale + trans
 
         with torch.no_grad():
             idx_faces, idx_vertices = get_pix_to_face(verts_pose, cloth.f, vb.squeeze(), faces_body, raster)
@@ -287,28 +286,15 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
 
         verts_pose_2D = (transform_100.transform_points(tri_center.unsqueeze(0))[:,:,[1,0]]*(-255.5)) + 255.5 # x,y
         
-        image = np.zeros((512, 512))
-        verts_pose_2D_np = verts_pose_2D.squeeze().detach().cpu().numpy().astype(int)
-        image[verts_pose_2D_np[:,0],verts_pose_2D_np[:,1]] = 1
-        cv2.imwrite('../tmp/tmp/image-%03d.png'%i, (image*255).astype(np.uint8))
-        #sys.exit()
-        
-        
         verts_pose_2D_pend = torch.cat((verts_pose_2D, torch.zeros(verts_pose_2D.shape[0], verts_pose_2D.shape[1], 1).cuda()), dim=-1)
         loss_cd_keep, loss_normal = chamfer_distance(verts_pose_2D_pend, idx_mask_pend.unsqueeze(0), x_normals=normal, y_normals=normal_img.unsqueeze(0))
-        loss_cd_keep = loss_cd_keep/5#5#0
-        loss_cd_rest, _ = chamfer_distance_single(vertices_keep, verts_pose.unsqueeze(0))
-        loss_cd_rest *= 100*50*0
-        loss_cd_rest_all, _ = chamfer_distance_single(verts_pose.unsqueeze(0), vertices_all)
-        loss_cd_rest_all *= 100*50*0
+        loss_cd_keep = loss_cd_keep/5
 
         loss_reg = F.binary_cross_entropy(v_indicator_f, target_f) + F.binary_cross_entropy(v_indicator_b, target_b) 
 
-        loss_strain = stretching_energy(verts_pose.unsqueeze(0), cloth)/5#*weight_strain
-        #loss_strain = spring_energy(verts_pose, cloth)/100
+        loss_strain = stretching_energy(verts_pose.unsqueeze(0), cloth)/5
         loss_bending = bending_energy(verts_pose.unsqueeze(0), cloth)#*10
         loss_gravity = gravitational_energy(verts_pose.unsqueeze(0), cloth.v_mass)#*50
-        #loss_collision = collision_penalty(verts_pose.unsqueeze(0), vb, nb, eps=eps)#/5
 
         with torch.no_grad():
             tri = verts_pose[cloth.f.reshape(-1)].reshape(-1,3,3)
@@ -316,7 +302,6 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
             normal_faces = torch.cross(vectors[:, 0], vectors[:, 1], dim=-1)
             normal_faces = normal_faces/normal_faces.norm(p=2, dim=-1, keepdim=True)
             normal_vertices = compute_normals_per_vertex(verts_pose.unsqueeze(0), cloth.f, normal_faces.unsqueeze(0)).squeeze()
-            #print(verts_pose.shape, normal_vertices.shape)
         loss_collision = collision_penalty_skirt(verts_pose, normal_vertices, vb.squeeze(), nb.squeeze(), eps=eps)#/5
 
 
@@ -324,11 +309,12 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
         edges_oritation_update = edges_update[:, 0] - edges_update[:, 1]
         loss_edge = (1 - F.cosine_similarity(edges_oritation_update, edges_oritation_gt, dim=-1)).mean()
 
-        loss = loss_cd_keep + loss_normal + loss_cd_rest + loss_reg + (loss_collision + loss_bending + loss_strain + loss_gravity)/1 + loss_cd_rest_all + loss_edge
-        print('iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_cd_rest: %0.4f, loss_cd_rest_all: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f, loss_reg: %0.4f , loss_edge: %0.4f '%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_cd_rest.item(), loss_cd_rest_all.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_reg.item(), loss_edge.item()))
+        loss = loss_cd_keep + loss_normal + loss_reg + (loss_collision + loss_bending + loss_strain + loss_gravity) + loss_edge
+        if i%50 == 0 or i == iters - 1:
+            print('iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f, loss_reg: %0.4f , loss_edge: %0.4f '%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_reg.item(), loss_edge.item()))
 
         if not (file_loss_path is None):
-            line = 'iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_cd_rest: %0.4f, loss_cd_rest_all: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f, loss_reg: %0.4f, loss_edge: %0.4f \n'%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_cd_rest.item(), loss_cd_rest_all.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_reg.item(), loss_edge.item())
+            line = 'iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f, loss_reg: %0.4f, loss_edge: %0.4f \n'%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_reg.item(), loss_edge.item())
             file_loss.write(line)
 
         if loss_min > loss.item():

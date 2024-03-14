@@ -23,28 +23,23 @@ def process_seg(image):
 
     return image
 
-def prepare_input(normal_econ_512, mask_sam, body_smpl, body_renderer, result_path, save_img=True):
-    
-    normal_econ_512 = vid['normal_F'][0].permute(1,2,0).cpu().numpy()
+def prepare_input(normal_econ_512, mask_sam, body_verts, body_faces, body_renderer, result_path, save_img=True):
     normal_econ_512 = ((normal_econ_512*0.5+0.5)*255).astype(np.uint8)
 
     mask_normal = normal_econ_512*mask_sam[:,:,None]
-    cv2.imwrite(os.path.join(result_path, 'mask_normal.png'), mask_normal[:,:,[2,1,0]])
 
-    body_seg_f = renderer.render_body_seg(torch.FloatTensor(body_smpl.vertices).cuda(), torch.LongTensor(body_smpl.faces).cuda(), body_renderer)[:,:,[0]]
+    body_verts = torch.FloatTensor(body_verts).cuda()
+    body_faces = torch.LongTensor(body_faces).cuda()
+    body_seg_f = renderer.render_body_seg(body_verts, body_faces, body_renderer)[:,:,[0]]
 
-    verts = body_smpl.vertices.copy()
-    verts[:, 0] *= -1
-    verts[:, -1] *= -1
-    body_seg_b = renderer.render_body_seg(torch.FloatTensor(verts).cuda(), torch.LongTensor(body_smpl.faces).cuda(), body_renderer)[:,:,[0]]
+    body_verts_flip = body_verts.clone()
+    body_verts_flip[:, 0] *= -1
+    body_verts_flip[:, -1] *= -1
+    body_seg_b = renderer.render_body_seg(body_verts_flip, body_faces, body_renderer)[:,:,[0]]
     body_seg_b = np.fliplr(body_seg_b)
-    cv2.imwrite(os.path.join(result_path, 'body_seg_f.png'), body_seg_f)
-    cv2.imwrite(os.path.join(result_path, 'body_seg_b.png'), body_seg_b)
 
-    body_xyz_f, body_xyz_f_image = renderer.render_body_xyz(torch.FloatTensor(body_smpl.vertices).cuda(), torch.LongTensor(body_smpl.faces).cuda(), body_renderer, vis_back=False)
-    body_xyz_b, body_xyz_b_image = renderer.render_body_xyz(torch.FloatTensor(body_smpl.vertices).cuda(), torch.LongTensor(body_smpl.faces).cuda(), body_renderer, vis_back=True)
-    cv2.imwrite(os.path.join(result_path, 'body_xyz_f.png'), body_xyz_f_image)
-    cv2.imwrite(os.path.join(result_path, 'body_xyz_b.png'), body_xyz_b_image)
+    body_xyz_f, body_xyz_f_image = renderer.render_body_xyz(body_verts, body_faces, body_renderer, vis_back=False)
+    body_xyz_b, body_xyz_b_image = renderer.render_body_xyz(body_verts, body_faces, body_renderer, vis_back=True)
 
     normal_img = process_image(normal_econ)
     body_seg_f = process_seg(body_seg_f)
@@ -54,5 +49,13 @@ def prepare_input(normal_econ_512, mask_sam, body_smpl, body_renderer, result_pa
     images_body = np.transpose(images_body, (2,0,1))
     images = torch.FloatTensor(images).unsqueeze(0).cuda()
     images_body = torch.FloatTensor(images_body).unsqueeze(0).cuda()
+
+    if save_img:
+        cv2.imwrite(os.path.join(result_path, 'mask_normal.png'), mask_normal[:,:,[2,1,0]])
+        cv2.imwrite(os.path.join(result_path, 'body_seg_f.png'), body_seg_f)
+        cv2.imwrite(os.path.join(result_path, 'body_seg_b.png'), body_seg_b)    
+        cv2.imwrite(os.path.join(result_path, 'body_xyz_f.png'), body_xyz_f_image)
+        cv2.imwrite(os.path.join(result_path, 'body_xyz_b.png'), body_xyz_b_image)
+
 
     return images, images_body
