@@ -94,7 +94,7 @@ def reconstruct_v3(cnn_regressor, model_isp, latent_codes, images, pose, beta, u
         #extractor, extractorBody, featuror, field, diffusion_skin = cnn_regressor
         mesh_uv, uv_vertices, uv_faces, edges = uv
 
-        verts_pose_f, verts_pose_b, v_indicator_f, v_indicator_b = infer_model(images, cnn_regressor, uv_vertices)
+        verts_pose_f, verts_pose_b, v_indicator_f, v_indicator_b, uv_features_f, uv_features_b = infer_model(images, cnn_regressor, uv_vertices)
         
         verts_pose_f_infer = verts_pose_f.cpu().numpy()
         verts_pose_b_infer = verts_pose_b.cpu().numpy()
@@ -158,16 +158,18 @@ def reconstruct_v3(cnn_regressor, model_isp, latent_codes, images, pose, beta, u
         idx_waist_v_propogate = list(idx_waist_v_propogate)
     idx_waist_v_propogate = np.array(idx_waist_v_propogate)
 
-    '''
-    verts_pose_raw = torch.FloatTensor(mesh_atlas_sewing.vertices).cuda()
-    weight_skin = diffusion_skin(verts_pose_raw*10)
+    # compute pseudo edges for waist
+    verts_pose_skin = torch.FloatTensor(mesh_atlas_sewing.vertices).cuda()
+    weight_skin = diffusion_skin(verts_pose_skin*10)
     weight_skin = F.softmax(weight_skin, dim=-1)
-    verts_pose_raw = skinning_diffuse(verts_pose_raw.unsqueeze(0), w_smpl, tfs, pose_offsets, shape_offsets, weight_skin, Rot_rest, pose_offsets_rest)
-    verts_pose_raw -= root_J
-    verts_pose_raw = verts_pose_raw.squeeze().detach()
-    mesh_pose_raw = trimesh.Trimesh((verts_pose_raw*scale + trans).cpu().detach().numpy(), mesh_atlas_sewing.faces)
-    mesh_pose_raw.export(os.path.join(save_path, 'mesh_pose_raw.obj'))
-    '''
+    verts_pose_skin = skinning_diffuse(verts_pose_skin.unsqueeze(0), w_smpl, tfs, pose_offsets, shape_offsets, weight_skin, Rot_rest, pose_offsets_rest)
+    verts_pose_skin -= root_J
+    verts_pose_skin = verts_pose_skin.squeeze().detach()
+    verts_pose_skin = verts_pose_skin*scale + trans
+    edges_pseudo = verts_pose[waist_edges.reshape(-1)].reshape(-1, 2, 3)
+    #mesh_pose_raw = trimesh.Trimesh((verts_pose_skin*scale + trans).cpu().detach().numpy(), mesh_atlas_sewing.faces)
+    #mesh_pose_raw.export(os.path.join(save_path, 'mesh_pose_raw.obj'))
+    
 
     v_barycentric_f, closest_face_idx_f = barycentric_faces(mesh_pattern_f, mesh_uv)
     v_barycentric_b, closest_face_idx_b = barycentric_faces(mesh_pattern_b, mesh_uv)
@@ -177,12 +179,11 @@ def reconstruct_v3(cnn_regressor, model_isp, latent_codes, images, pose, beta, u
     cloth_scale = rescale_cloth(beta, body_zero, smpl_server)
     material = Material()
     cloth = Cloth_from_NP(mesh_atlas_sewing.vertices*cloth_scale[None], mesh_atlas_sewing.faces, material)
-
-    uv_faces_cuda = torch.from_numpy(uv_faces).cuda()
     cloth_related = [cloth, torch.FloatTensor(v_barycentric_f).cuda(), torch.from_numpy(closest_face_idx_f).cuda(), torch.FloatTensor(v_barycentric_b).cuda(), torch.from_numpy(closest_face_idx_b).cuda(), torch.from_numpy(waist_edges).cuda()]
     #cloth_related = [cloth, torch.FloatTensor(v_barycentric_f).cuda(), torch.from_numpy(closest_face_idx_f).cuda(), torch.FloatTensor(v_barycentric_b).cuda(), torch.from_numpy(closest_face_idx_b).cuda(), torch.from_numpy(idx_v).cuda(), torch.from_numpy(waist_edges).cuda()]
 
-    v_indicator_f, v_indicator_b, verts_pose_f, verts_pose_b = optimize_prior(images, images_body, extractor, extractorBody, featuror, field, uv_features_f.detach(), uv_features_b.detach(), verts_pose_f.unsqueeze(0).detach(), verts_pose_b.unsqueeze(0).detach(), verts_pose_raw, vertices_keep, vertices_all, mask_normal, v_indicator_f_target, v_indicator_b_target, transform, transform_100, trans, scale, body_collision, cloth_related, uv_faces_cuda, iters=300, file_loss_path=file_loss_path, weight_strain=5)
+    uv_faces_cuda = torch.from_numpy(uv_faces).cuda()
+    verts_pose_f, verts_pose_b = optimize_prior(images, images_body, cnn_regressor[:4], uv_features_f.detach(), uv_features_b.detach(), verts_pose_f.unsqueeze(0).detach(), verts_pose_b.unsqueeze(0).detach(), edges_pseudo, mask_normal, v_indicator_f_target, v_indicator_b_target, transform, transform_100, trans, scale, body_collision, cloth_related, uv_faces_cuda, iters=300, file_loss_path=file_loss_path)
     verts_pose_f = verts_pose_f.cpu().numpy()
     verts_pose_b = verts_pose_b.cpu().numpy()
 
@@ -193,46 +194,37 @@ def reconstruct_v3(cnn_regressor, model_isp, latent_codes, images, pose, beta, u
     faces_pattern_f = mesh_pattern_f.faces
     faces_pattern_b = mesh_pattern_b.faces
     
+    #trimesh_cloth_f = trimesh.Trimesh(verts_f, faces_pattern_f, validate=False, process=False)
+    #trimesh_cloth_b = trimesh.Trimesh(verts_b, faces_pattern_b, validate=False, process=False)
+    #trimesh_cloth = concatenate_mesh(trimesh_cloth_f, trimesh_cloth_b)
+    #verts_sewing = trimesh_cloth.vertices#[idx_v]
+    verts_prior_opt = np.concatenate((verts_f, verts_b), axis=0)
+    verts_prior_opt_trans = verts_prior_opt*scale.cpu().numpy() + trans.cpu().numpy()
+    #mesh_atlas_sewing_posed = mesh_atlas_sewing.copy()
+    mesh_prior_opt = trimesh.Trimesh(verts_prior_opt, mesh_atlas_sewing.faces, validate=False, process=False)
+    mesh_prior_opt_trans = trimesh.Trimesh(verts_prior_opt_trans, mesh_atlas_sewing.faces, validate=False, process=False)
+    mesh_prior_opt_trans.export(os.path.join(save_path, 'mesh_prior_opt.obj'))
 
-    trimesh_cloth_f = trimesh.Trimesh(verts_f, faces_pattern_f, validate=False, process=False)
-    trimesh_cloth_b = trimesh.Trimesh(verts_b, faces_pattern_b, validate=False, process=False)
-    trimesh_cloth_f.export(os.path.join(save_path, 'trimesh_cloth_f.obj'))
-    trimesh_cloth_b.export(os.path.join(save_path, 'trimesh_cloth_b.obj'))
-    trimesh_cloth = concatenate_mesh(trimesh_cloth_f, trimesh_cloth_b)
+    v_waist = project_waist(verts_prior_opt[idx_waist_v_propogate], body_smpl)
+    mesh_prior_opt.vertices[idx_waist_v_propogate] = v_waist
+    mesh_prior_opt.export(os.path.join(save_path, 'mesh_prior_opt_projected.obj'))
 
-    verts_sewing = trimesh_cloth.vertices#[idx_v]
-    mesh_atlas_sewing_posed = mesh_atlas_sewing.copy()
-    mesh_atlas_sewing_posed_trans = mesh_atlas_sewing.copy()
-    mesh_atlas_sewing_posed.vertices = verts_sewing
-    mesh_atlas_sewing_posed_trans.vertices = verts_sewing*scale.cpu().numpy() + trans.cpu().numpy()
-    mesh_atlas_sewing_posed_trans.export(os.path.join(save_path, 'mesh_atlas_sewing_posed.obj'))
-    mesh_atlas_sewing_posed_trans.vertices[:,1] += 0.05
-    mesh_atlas_sewing_posed_trans.export(os.path.join(save_path, 'mesh_atlas_sewing_posed_offset.obj'))
+    # 到这了！！！
+    mesh_verts_opt = optimize_vertices(mesh_prior_opt, trans, scale, body_collision, cloth, torch.from_numpy(idx_waist_v_propogate).cuda(), mask_normal, transform_100, iters=400, smooth_boundary=True, file_loss_path=file_loss_path)
+    mesh_verts_opt.export(os.path.join(save_path, 'mesh_verts_opt.obj'))
     
+
     tri_f_infer = verts_pose_f_infer[mesh_uv.faces[closest_face_idx_f]]
     tri_b_infer = verts_pose_b_infer[mesh_uv.faces[closest_face_idx_b]]
     verts_f_infer = trimesh.triangles.barycentric_to_points(tri_f_infer, v_barycentric_f)
     verts_b_infer = trimesh.triangles.barycentric_to_points(tri_b_infer, v_barycentric_b)
 
-    mesh_atlas_sewing_posed_trans_infer = mesh_atlas_sewing.copy()
-    mesh_atlas_sewing_posed_trans_infer.vertices = np.concatenate((verts_f_infer, verts_b_infer), axis=0)[idx_v]
-    mesh_atlas_sewing_posed_trans_infer.vertices = mesh_atlas_sewing_posed_trans_infer.vertices*scale.cpu().numpy() + trans.cpu().numpy()
-    mesh_atlas_sewing_posed_trans_infer.export(os.path.join(save_path, 'mesh_atlas_sewing_posed_infer.obj'))
-    #sys.exit()
+    mesh_infer_raw = mesh_atlas_sewing.copy()
+    mesh_infer_raw.vertices = np.concatenate((verts_f_infer, verts_b_infer), axis=0)#[idx_v]
+    mesh_infer_raw.vertices = mesh_infer_raw.vertices*scale.cpu().numpy() + trans.cpu().numpy()
+    mesh_infer_raw.export(os.path.join(save_path, 'mesh_infer_raw.obj'))
     
-    
-    mesh_atlas_sewing_posed = trimesh.load(os.path.join(save_path, 'mesh_atlas_sewing_posed.obj'))
-    mesh_atlas_sewing_posed.vertices = (mesh_atlas_sewing_posed.vertices - trans.cpu().numpy())/scale.cpu().numpy()
-
-    v_waist = project_waist(mesh_atlas_sewing_posed.vertices[idx_waist_v_propogate], body_smpl)
-    mesh_atlas_sewing_posed.vertices[idx_waist_v_propogate] = v_waist
-    mesh_atlas_sewing_posed.export(os.path.join(save_path, 'mesh_atlas_sewing_posed_projected.obj'))
-
-    mesh_atlas_sewing_posed_post = optimize_vertices(mesh_atlas_sewing_posed, vertices_keep, vertices_all, trans, scale, body_collision, cloth, torch.from_numpy(idx_waist_v_propogate).cuda(), mask_normal, transform_100, iters=400, smooth_boundary=True, file_loss_path=file_loss_path)
-    mesh_atlas_sewing_posed_post.export(os.path.join(save_path, 'mesh_atlas_sewing_posed_post.obj'))
-    
-    
-    return mesh_atlas_sewing_posed, mesh_atlas_sewing_posed_post
+    return mesh_verts_opt
 
 
 def sewing_left_right(mesh_atlas_l, idx_seam3_v):
@@ -315,7 +307,7 @@ for i in range(0, len(images_list)):
     body_collision = Body(body_smpl_trans.faces)
     body_collision.update_body(torch.FloatTensor(body_smpl_trans.vertices).unsqueeze(0).cuda())
 
-    images, images_body = prepare_input(normal_econ_512, mask_sam, verts, smpl_server.faces, body_renderer, result_path, save_img=True)
+    images, images_body, mask_normal = prepare_input(normal_econ_512, mask_sam, verts, smpl_server.faces, body_renderer, result_path, save_img=True)
     
     mesh_atlas_sewing_posed, mesh_atlas_sewing_posed_post = reconstruct_v3(model_cnn_regressor, model_isp, latent_codes, [images, images_body], pose, beta, uv, Rot_rest, pose_offsets_rest, verts_uv_cano_f_mean, verts_uv_cano_b_mean, weight_f, weight_b, smpl_server, trans, scale, result_path)
     

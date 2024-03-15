@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from utils.smpl_utils import infer_smpl
+from utils.smpl_utils import infer_smpl, skinning_diffuse
 from utils.mesh_utils import repair_pattern
 
 def infer_model(images, cnn_regressor, uv_vertices):
@@ -45,7 +45,7 @@ def infer_model(images, cnn_regressor, uv_vertices):
     verts_pose_b = verts_pose_b.squeeze().detach()
     v_indicator_f, v_indicator_b = v_indicator_f.detach().squeeze().reshape(-1) > 0.5, v_indicator_b.detach().squeeze().reshape(-1) > 0.5
 
-    return verts_pose_f, verts_pose_b, v_indicator_f, v_indicator_b
+    return verts_pose_f, verts_pose_b, v_indicator_f, v_indicator_b, uv_features_f, uv_features_b
 
 
 def reconstruct_pattern_with_label(model_isp, latent_code, uv_vertices, uv_faces, edges, using_repair=True):

@@ -58,4 +58,4 @@ def prepare_input(normal_econ_512, mask_sam, body_verts, body_faces, body_render
         cv2.imwrite(os.path.join(result_path, 'body_xyz_b.png'), body_xyz_b_image)
 
 
-    return images, images_body
+    return images, images_body, mask_normal

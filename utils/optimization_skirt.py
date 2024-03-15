@@ -179,8 +179,9 @@ def compute_normals_per_vertex(
 
     return normalized_sum_normals
 
-def optimize_prior(images, images_body, extractor, extractorBody, featuror, field, uv_features_f, uv_features_b, verts_pose_f, verts_pose_b, verts_pose_raw, mask_normal, v_indicator_f_target, v_indicator_b_target, transform, transform_100, trans, scale, body, cloth_related, uv_faces, iters=350, idx_collar_f=None, file_loss_path=None):
+def optimize_prior(images, images_body, models_prior, uv_features_f, uv_features_b, verts_pose_f, verts_pose_b, edges_pseudo, mask_normal, v_indicator_f_target, v_indicator_b_target, transform, transform_100, trans, scale, body, cloth_related, uv_faces, iters=350, file_loss_path=None):
 
+    extractor, extractorBody, featuror, field = models_prior
     cloth, v_barycentric_f, closest_face_idx_f, v_barycentric_b, closest_face_idx_b, waist_edges = cloth_related
     #cloth, v_barycentric_f, closest_face_idx_f, v_barycentric_b, closest_face_idx_b, idx_v, waist_edges = cloth_related
     v_barycentric_f.requires_grad = False
@@ -222,7 +223,6 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
     nb.requires_grad = False
     eps = 0
      
-    cv2.imwrite('../tmp/mask_normal.png', mask_normal)
     idx_x, idx_y = np.where((mask_normal==0).sum(axis=-1)!=3)
     idx_mask = np.stack((idx_x, idx_y), axis=-1).astype(float)
     idx_mask = torch.FloatTensor(idx_mask).cuda()
@@ -230,10 +230,10 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
     normal = (mask_normal[idx_x, idx_y].astype(float)/255*2) - 1
     normal = torch.FloatTensor(normal).cuda()
     normal_img = normal/normal.norm(p=2, dim=-1, keepdim=True)
-    verts_pose = verts_pose_raw*scale + trans
+    #verts_pose = verts_pose_raw*scale + trans
 
-    edges = verts_pose[waist_edges.reshape(-1)].reshape(-1, 2, 3)
-    edges_oritation_gt = edges[:, 0] - edges[:, 1]
+    #edges = verts_pose[waist_edges.reshape(-1)].reshape(-1, 2, 3)
+    edges_oritation_gt = edges_pseudo[:, 0] - edges_pseudo[:, 1]
 
     raster = get_raster(render_res=512, scale=100)
     faces_body = torch.from_numpy(body.f).cuda()
@@ -244,7 +244,6 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
     if not (file_loss_path is None):
         file_loss = open(file_loss_path, 'a')
         
-    strain_record = 0
     iters = 300
     for i in range(iters):
         features = extractor(images)
@@ -264,7 +263,6 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
         verts_pose_f_new = verts_pose_f_new.squeeze()
         verts_pose_b_new = verts_pose_b_new.squeeze()
 
-
         verts_f = uv_to_3D(verts_pose_f_new, uv_faces, v_barycentric_f, closest_face_idx_f).squeeze()
         verts_b = uv_to_3D(verts_pose_b_new, uv_faces, v_barycentric_b, closest_face_idx_b).squeeze()
         verts = torch.cat((verts_f, verts_b), dim=0)
@@ -273,7 +271,7 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
 
         with torch.no_grad():
             idx_faces, idx_vertices = get_pix_to_face(verts_pose, cloth.f, vb.squeeze(), faces_body, raster)
-            mesh = trimesh.Trimesh(verts_pose.squeeze().detach().cpu().numpy(), cloth.f[idx_faces].squeeze().detach().cpu().numpy())
+            #mesh = trimesh.Trimesh(verts_pose.squeeze().detach().cpu().numpy(), cloth.f[idx_faces].squeeze().detach().cpu().numpy())
             faces = cloth.f[idx_faces]
         tri = verts_pose[faces.reshape(-1)].reshape(-1,3,3)
         tri_center = tri.mean(dim=1)
@@ -283,15 +281,15 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
         normal = torch.cat((normal[:,:2], normal[:,[-1]].abs()), dim=-1)
         normal = normal.unsqueeze(0)
 
-
+        # loss to image observation
         verts_pose_2D = (transform_100.transform_points(tri_center.unsqueeze(0))[:,:,[1,0]]*(-255.5)) + 255.5 # x,y
-        
         verts_pose_2D_pend = torch.cat((verts_pose_2D, torch.zeros(verts_pose_2D.shape[0], verts_pose_2D.shape[1], 1).cuda()), dim=-1)
         loss_cd_keep, loss_normal = chamfer_distance(verts_pose_2D_pend, idx_mask_pend.unsqueeze(0), x_normals=normal, y_normals=normal_img.unsqueeze(0))
         loss_cd_keep = loss_cd_keep/5
 
         loss_reg = F.binary_cross_entropy(v_indicator_f, target_f) + F.binary_cross_entropy(v_indicator_b, target_b) 
 
+        # physical loss
         loss_strain = stretching_energy(verts_pose.unsqueeze(0), cloth)/5
         loss_bending = bending_energy(verts_pose.unsqueeze(0), cloth)#*10
         loss_gravity = gravitational_energy(verts_pose.unsqueeze(0), cloth.v_mass)#*50
@@ -304,12 +302,12 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
             normal_vertices = compute_normals_per_vertex(verts_pose.unsqueeze(0), cloth.f, normal_faces.unsqueeze(0)).squeeze()
         loss_collision = collision_penalty_skirt(verts_pose, normal_vertices, vb.squeeze(), nb.squeeze(), eps=eps)#/5
 
-
+        # waist edge loss
         edges_update = verts_pose[waist_edges.reshape(-1)].reshape(-1, 2, 3)
         edges_oritation_update = edges_update[:, 0] - edges_update[:, 1]
         loss_edge = (1 - F.cosine_similarity(edges_oritation_update, edges_oritation_gt, dim=-1)).mean()
 
-        loss = loss_cd_keep + loss_normal + loss_reg + (loss_collision + loss_bending + loss_strain + loss_gravity) + loss_edge
+        loss = (loss_cd_keep + loss_normal) + loss_reg + (loss_collision + loss_bending + loss_strain + loss_gravity) + loss_edge
         if i%50 == 0 or i == iters - 1:
             print('iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f, loss_reg: %0.4f , loss_edge: %0.4f '%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_reg.item(), loss_edge.item()))
 
@@ -327,13 +325,11 @@ def optimize_prior(images, images_body, extractor, extractorBody, featuror, fiel
 
     verts_pose_f_new = verts_pose_f + delta_x_f_best[:,:,:3]/10
     verts_pose_b_new = verts_pose_b + delta_x_b_best[:,:,:3]/10
-    v_indicator_f, v_indicator_b = F.sigmoid(delta_x_f_best[:,:, -1]), F.sigmoid(delta_x_b_best[:,:, -1])
-    v_indicator_f, v_indicator_b = v_indicator_f > 0.5, v_indicator_b > 0.5
 
     if not (file_loss_path is None):
         file_loss.close()
 
-    return v_indicator_f.detach().squeeze().reshape(-1), v_indicator_b.detach().squeeze().reshape(-1), verts_pose_f_new.detach().squeeze(), verts_pose_b_new.detach().squeeze()
+    return verts_pose_f_new.detach().squeeze(), verts_pose_b_new.detach().squeeze()
 
 
 
