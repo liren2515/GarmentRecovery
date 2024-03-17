@@ -32,6 +32,13 @@ The example files are under `./extra-data/fitting-sample/`, including the segmen
 ## Citation
 If you find our work useful, please cite it as:
 ```
+@inproceedings{Li2023isp,
+  author = {Li, Ren and Guillard, Benoit and Fua, Pascal},
+  title = {{ISP: Multi-Layered Garment Draping with Implicit Sewing Patterns}},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year = {2023}
+}
+
 @inproceedings{li2024garment,
   author = {Li, Ren and Dumery, Corentin and Guillard, Benoit and Fua, Pascal},
   title = {{Garment Recovery with Shape and Deformation Priors}},
