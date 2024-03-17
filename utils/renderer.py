@@ -145,7 +145,7 @@ def verts_color(partsIdx):
     return color
 
 def render_body_seg(verts, faces_body, renderer_textured):
-    partsIdx = load_pkl('/scratch/cvlab/home/ren/code/cloth-from-image/extra-data/parts14_vertex_idx.pkl')
+    partsIdx = load_pkl('../extra-data/parts14_vertex_idx.pkl')
     color = verts_color(partsIdx)
     color = torch.FloatTensor(color).cuda()/10
     textures = TexturesVertex(verts_features=color[None])

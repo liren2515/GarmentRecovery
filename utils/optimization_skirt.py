@@ -5,14 +5,13 @@ import os, sys
 import trimesh
 import cv2
 
-from utils.chamfer import chamfer_distance_single
 from pytorch3d.structures import Meshes
-from pytorch3d.loss import mesh_laplacian_smoothing
 from pytorch3d.loss import chamfer_distance
-from snug.snug_helper import stretching_energy, bending_energy, gravitational_energy, collision_penalty, spring_energy, collision_penalty_skirt, shrink_penalty
+
+from snug.snug_helper import stretching_energy, bending_energy, gravitational_energy, collision_penalty, collision_penalty_skirt, shrink_penalty
 from snug.snug_class import Cloth_from_NP
-from utils.isp_cut import select_boundary
 from utils.rasterize import get_raster, get_pix_to_face
+from utils.isp_cut import select_boundary
 
 
 def reconstruct_pattern(model_isp, latent_code, uv_vertices, uv_faces):
@@ -179,16 +178,16 @@ def compute_normals_per_vertex(
 
     return normalized_sum_normals
 
-def optimize_prior(images, images_body, models_prior, uv_features_f, uv_features_b, verts_pose_f, verts_pose_b, edges_pseudo, mask_normal, v_indicator_f_target, v_indicator_b_target, transform, transform_100, trans, scale, body, cloth_related, uv_faces, iters=350, file_loss_path=None):
+def optimize_prior(images_input, models_prior, uv_features_f, uv_features_b, verts_pose_f, verts_pose_b, edges_pseudo, mask_normal, v_indicator_f_target, v_indicator_b_target, transforms, trans, scale, body, cloth_related, uv_faces, iters=350, file_loss_path=None):
 
+    images, images_body = images_input
+    transform, transform_100 = transforms
     extractor, extractorBody, featuror, field = models_prior
     cloth, v_barycentric_f, closest_face_idx_f, v_barycentric_b, closest_face_idx_b, waist_edges = cloth_related
-    #cloth, v_barycentric_f, closest_face_idx_f, v_barycentric_b, closest_face_idx_b, idx_v, waist_edges = cloth_related
     v_barycentric_f.requires_grad = False
     closest_face_idx_f.requires_grad = False
     v_barycentric_b.requires_grad = False
     closest_face_idx_b.requires_grad = False
-    #idx_v.requires_grad = False
 
     verts_pose_f_2D = (transform.transform_points(verts_pose_f)[:,:,:2]*(-1)).detach()
     verts_pose_b_2D = (transform.transform_points(verts_pose_b)[:,:,:2]*(-1)).detach()
@@ -230,9 +229,7 @@ def optimize_prior(images, images_body, models_prior, uv_features_f, uv_features
     normal = (mask_normal[idx_x, idx_y].astype(float)/255*2) - 1
     normal = torch.FloatTensor(normal).cuda()
     normal_img = normal/normal.norm(p=2, dim=-1, keepdim=True)
-    #verts_pose = verts_pose_raw*scale + trans
 
-    #edges = verts_pose[waist_edges.reshape(-1)].reshape(-1, 2, 3)
     edges_oritation_gt = edges_pseudo[:, 0] - edges_pseudo[:, 1]
 
     raster = get_raster(render_res=512, scale=100)
@@ -266,12 +263,10 @@ def optimize_prior(images, images_body, models_prior, uv_features_f, uv_features
         verts_f = uv_to_3D(verts_pose_f_new, uv_faces, v_barycentric_f, closest_face_idx_f).squeeze()
         verts_b = uv_to_3D(verts_pose_b_new, uv_faces, v_barycentric_b, closest_face_idx_b).squeeze()
         verts = torch.cat((verts_f, verts_b), dim=0)
-        #verts_pose = verts[idx_v]*scale + trans
         verts_pose = verts*scale + trans
 
         with torch.no_grad():
             idx_faces, idx_vertices = get_pix_to_face(verts_pose, cloth.f, vb.squeeze(), faces_body, raster)
-            #mesh = trimesh.Trimesh(verts_pose.squeeze().detach().cpu().numpy(), cloth.f[idx_faces].squeeze().detach().cpu().numpy())
             faces = cloth.f[idx_faces]
         tri = verts_pose[faces.reshape(-1)].reshape(-1,3,3)
         tri_center = tri.mean(dim=1)
@@ -333,38 +328,28 @@ def optimize_prior(images, images_body, models_prior, uv_features_f, uv_features
 
 
 
-def optimize_vertices(gar_mesh, vertices_keep, vertices_all, trans, scale, body, cloth, idx_waist_v_propogate, mask_normal, transform_100, iters=200, smooth_boundary=False, idx_collar_f=None, file_loss_path=None):
+def optimize_vertices(mesh_prior_opt, trans, scale, body, cloth, idx_waist_v_propogate, mask_normal, transform_100, iters=200, smooth_boundary=False, file_loss_path=None):
 
     if smooth_boundary:
-        _, boundary_edges = select_boundary(gar_mesh)
-        
-        edges = gar_mesh.vertices[boundary_edges.reshape(-1)].reshape(-1, 2, 3)
+        _, boundary_edges = select_boundary(mesh_prior_opt)
+        edges = mesh_prior_opt.vertices[boundary_edges.reshape(-1)].reshape(-1, 2, 3)
         edges_oritation_gt = edges[:, 0] - edges[:, 1]
         edges_oritation_gt = torch.FloatTensor(edges_oritation_gt).cuda()
         boundary_edges = torch.from_numpy(boundary_edges).cuda()
 
-    vertices = torch.FloatTensor(gar_mesh.vertices).cuda()
+    vertices = torch.FloatTensor(mesh_prior_opt.vertices).cuda()
     # add small perterbation can avoid NaN in backward.
-    offset_update = torch.zeros(gar_mesh.vertices.shape).cuda() #+ torch.randn(gar_mesh.vertices.shape).cuda()*0.0001
-    scale_update = torch.ones(gar_mesh.vertices.shape).cuda()
+    offset_update = torch.zeros(mesh_prior_opt.vertices.shape).cuda() #+ torch.randn(gar_mesh.vertices.shape).cuda()*0.0001
+    scale_update = torch.ones(mesh_prior_opt.vertices.shape).cuda()
     offset_update.requires_grad = True
     scale_update.requires_grad = True
     vertices.requires_grad = False
     trans.requires_grad = False
 
-    
-    scale_y = torch.ones(1).cuda()
-    trans_y = torch.zeros(1).cuda()
-    scale_y.requires_grad = False
-    trans_y.requires_grad = False
-
     lr = 1e-4
     optimizer = torch.optim.Adam([{'params': offset_update, 'lr': lr},
                                 {'params': scale_update, 'lr': lr},]
     )
-
-    vertices_all.requires_grad = False
-    vertices_keep.requires_grad = False
 
     vb = body.vb
     nb = body.nb
@@ -372,9 +357,7 @@ def optimize_vertices(gar_mesh, vertices_keep, vertices_all, trans, scale, body,
     nb.requires_grad = False
     eps = 5e-4
 
-
     idx_x, idx_y = np.where((mask_normal==0).sum(axis=-1)!=3)
-    #idx_x, idx_y = np.where(mask_sam>0)
     idx_mask = np.stack((idx_x, idx_y), axis=-1).astype(float)
     idx_mask = torch.FloatTensor(idx_mask).cuda()
     idx_mask_pend = torch.cat((idx_mask, torch.zeros(idx_mask.shape[0], 1).cuda()), dim=-1)
@@ -385,16 +368,10 @@ def optimize_vertices(gar_mesh, vertices_keep, vertices_all, trans, scale, body,
     raster = get_raster(render_res=512, scale=100)
     faces_body = torch.from_numpy(body.f).cuda()
     
-    weight_faces = torch.ones(len(cloth.f)).cuda()
-    if not (idx_collar_f is None):
-        weight_faces[idx_collar_f] = 10
-    
     if not (file_loss_path is None):
         file_loss = open(file_loss_path, 'a')
 
-    strain_record = 0
     for i in range(iters):
-        #garment_update = vertices + offset_update
         garment_update = vertices*scale_update + offset_update
         garment_update = garment_update*scale + trans
         
@@ -413,26 +390,14 @@ def optimize_vertices(gar_mesh, vertices_keep, vertices_all, trans, scale, body,
         
         verts_pose_2D_pend = torch.cat((verts_pose_2D, torch.zeros(verts_pose_2D.shape[0], verts_pose_2D.shape[1], 1).cuda()), dim=-1)
         loss_cd_keep, loss_normal = chamfer_distance(verts_pose_2D_pend, idx_mask_pend.unsqueeze(0), x_normals=normal, y_normals=normal_img.unsqueeze(0))
-        loss_cd_keep = loss_cd_keep/5#0
-        loss_cd_rest, _ = chamfer_distance_single(vertices_keep, garment_update.unsqueeze(0))
-        loss_cd_rest *= 100*50/10*0
-        loss_cd_rest_all, _ = chamfer_distance_single(garment_update.unsqueeze(0), vertices_all)
-        loss_cd_rest_all *= 100*50/10*0#0
+        loss_cd_keep = loss_cd_keep/5
 
-        #sys.exit()
-        loss_strain = stretching_energy(garment_update.unsqueeze(0), cloth)/10#5#/5#/10
-        #loss_strain = spring_energy(garment_update, cloth_new)/100#/10
-        loss_bending = bending_energy(garment_update.unsqueeze(0), cloth)*5#2#10#2
-        #mesh = Meshes(verts=[torch.zeros_like(garment_update)], faces=[cloth.f])
-        #new_mesh = mesh.offset_verts(garment_update)
-        #loss_bending = mesh_laplacian_smoothing(new_mesh)*500
-        loss_gravity = gravitational_energy(garment_update.unsqueeze(0), cloth.v_mass)#*50
-        loss_collision = collision_penalty(garment_update.unsqueeze(0), vb, nb, eps=eps)#/10
-
-        loss_shrink = shrink_penalty(garment_update[idx_waist_v_propogate], vb.squeeze())#*10
+        loss_strain = stretching_energy(garment_update.unsqueeze(0), cloth)/10
+        loss_bending = bending_energy(garment_update.unsqueeze(0), cloth)*5
+        loss_gravity = gravitational_energy(garment_update.unsqueeze(0), cloth.v_mass)
+        loss_collision = collision_penalty(garment_update.unsqueeze(0), vb, nb, eps=eps)
+        loss_shrink = shrink_penalty(garment_update[idx_waist_v_propogate], vb.squeeze())
         
-        loss = (loss_cd_keep + loss_normal*2) + (loss_collision  + loss_bending + loss_strain + loss_gravity) + loss_shrink
-
         if smooth_boundary:
             edges_update = garment_update[boundary_edges.reshape(-1)].reshape(-1, 2, 3)
             edges_oritation_update = edges_update[:, 0] - edges_update[:, 1]
@@ -440,167 +405,27 @@ def optimize_vertices(gar_mesh, vertices_keep, vertices_all, trans, scale, body,
         else:
             loss_edge = torch.zeros(1).cuda()
 
-        loss += loss_edge
-        #loss *= 0
-        print('iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_cd_rest: %0.4f, loss_cd_rest_all: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f , loss_edge: %0.4f, loss_shrink: %0.4f'%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_cd_rest.item(), loss_cd_rest_all.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_edge.item(), loss_shrink.item()))
+        loss = (loss_cd_keep + loss_normal*2) + (loss_collision  + loss_bending + loss_strain + loss_gravity) + loss_shrink + loss_edge
+
+        if i%50 == 0 or i == iters - 1:
+            print('iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f , loss_edge: %0.4f, loss_shrink: %0.4f'%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_edge.item(), loss_shrink.item()))
 
 
         if not (file_loss_path is None):
-            line = 'iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_cd_rest: %0.4f, loss_cd_rest_all: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f , loss_edge: %0.4f, loss_shrink: %0.4f\n'%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_cd_rest.item(), loss_cd_rest_all.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_edge.item(), loss_shrink.item())
+            line = 'iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f , loss_edge: %0.4f, loss_shrink: %0.4f\n'%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_edge.item(), loss_shrink.item())
             file_loss.write(line)
 
-        
         optimizer.zero_grad()
         loss.backward()
         offset_update.grad = torch.nan_to_num(offset_update.grad, nan=0.0)
         scale_update.grad = torch.nan_to_num(scale_update.grad, nan=0.0)
         optimizer.step()
 
-        #print(torch.isnan(offset_update).int().sum())
-        #sys.exit()
-
-    #print(scale_update)
     garment_update = vertices*scale_update + offset_update
     garment_update = garment_update*scale + trans
-    cloth_mesh = trimesh.Trimesh(garment_update.detach().squeeze().cpu().numpy(), gar_mesh.faces)
-
+    mesh_verts_opt = trimesh.Trimesh(garment_update.detach().squeeze().cpu().numpy(), mesh_prior_opt.faces)
 
     if not (file_loss_path is None):
         file_loss.close()
 
-
-    return cloth_mesh
-
-
-def optimize_ablation(gar_mesh, vertices_keep, vertices_all, trans, scale, body, cloth, verts_pose_raw, waist_edges, idx_waist_v_propogate, mask_normal, transform_100, iters=200, smooth_boundary=False, idx_collar_f=None, file_loss_path=None):
-
-    if smooth_boundary:
-        verts_pose = verts_pose_raw*scale + trans
-        edges = verts_pose[waist_edges.reshape(-1)].reshape(-1, 2, 3)
-        edges_oritation_gt = edges[:, 0] - edges[:, 1]
-
-    vertices = torch.FloatTensor(gar_mesh.vertices).cuda()
-    offset_update = torch.zeros(gar_mesh.vertices.shape).cuda()
-    scale_update = torch.ones(gar_mesh.vertices.shape).cuda()
-    offset_update.requires_grad = True
-    scale_update.requires_grad = True
-    vertices.requires_grad = False
-
-    
-    scale_y = torch.ones(1).cuda()
-    trans_y = torch.zeros(1).cuda()
-    scale_y.requires_grad = True
-    trans_y.requires_grad = True
-
-    lr = 1e-4
-    optimizer = torch.optim.Adam([{'params': offset_update, 'lr': lr},
-                                {'params': scale_update, 'lr': lr},
-                                {'params': scale_y, 'lr': lr},
-                                {'params': trans_y, 'lr': lr},]
-    )
-
-    vertices_all.requires_grad = False
-    vertices_keep.requires_grad = False
-
-    vb = body.vb
-    nb = body.nb
-    vb.requires_grad = False
-    nb.requires_grad = False
-    eps = 5e-4
-
-    idx_x, idx_y = np.where((mask_normal==0).sum(axis=-1)!=3)
-    idx_mask = np.stack((idx_x, idx_y), axis=-1).astype(float)
-    idx_mask = torch.FloatTensor(idx_mask).cuda()
-    idx_mask_pend = torch.cat((idx_mask, torch.zeros(idx_mask.shape[0], 1).cuda()), dim=-1)
-    normal = (mask_normal[idx_x, idx_y].astype(float)/255*2) - 1
-    normal = torch.FloatTensor(normal).cuda()
-    normal_img = normal/normal.norm(p=2, dim=-1, keepdim=True)
-
-    raster = get_raster(render_res=512, scale=100)
-    faces_body = torch.from_numpy(body.f).cuda()
-    
-    weight_faces = torch.ones(len(cloth.f)).cuda()
-    if not (idx_collar_f is None):
-        weight_faces[idx_collar_f] = 10
-    
-    if not (file_loss_path is None):
-        file_loss = open(file_loss_path, 'a')
-
-    strain_record = 0
-    for i in range(iters):
-        garment_update = vertices*scale_update + offset_update
-        garment_update = garment_update*scale + trans
-        
-        with torch.no_grad():
-            idx_faces, idx_vertices = get_pix_to_face(garment_update, cloth.f, vb.squeeze(), faces_body, raster)
-            faces = cloth.f[idx_faces]
-            #mesh = trimesh.Trimesh(garment_update.detach().cpu().numpy(), faces.detach().cpu().numpy())
-            #mesh.export('../tmp/mesh.obj')
-            #sys.exit()
-        tri = garment_update[faces.reshape(-1)].reshape(-1,3,3)
-        tri_center = tri.mean(dim=1)
-        vectors = tri[:,1:] - tri[:,:2]
-        normal = torch.cross(vectors[:, 0], vectors[:, 1], dim=-1)
-        normal = normal/normal.norm(p=2, dim=-1, keepdim=True)
-        normal = torch.cat((normal[:,:2], normal[:,[-1]].abs()), dim=-1)
-        normal = normal.unsqueeze(0)
-
-        verts_pose_2D = (transform_100.transform_points(tri_center.unsqueeze(0))[:,:,[1,0]]*(-255.5)) + 255.5 # x,y
-        
-        verts_pose_2D_pend = torch.cat((verts_pose_2D, torch.zeros(verts_pose_2D.shape[0], verts_pose_2D.shape[1], 1).cuda()), dim=-1)
-        loss_cd_keep, loss_normal = chamfer_distance(verts_pose_2D_pend, idx_mask_pend.unsqueeze(0), x_normals=normal, y_normals=normal_img.unsqueeze(0))
-        loss_cd_keep = loss_cd_keep/5#0
-        loss_cd_rest, _ = chamfer_distance_single(vertices_keep, garment_update.unsqueeze(0))
-        loss_cd_rest *= 100*50/10*0
-        loss_cd_rest_all, _ = chamfer_distance_single(garment_update.unsqueeze(0), vertices_all)
-        loss_cd_rest_all *= 100*50/10*0#0
-
-        #sys.exit()
-        loss_strain = stretching_energy(garment_update.unsqueeze(0), cloth)/10#5#/5#/10
-        loss_bending = bending_energy(garment_update.unsqueeze(0), cloth)#*5#2#10#2
-        loss_gravity = gravitational_energy(garment_update.unsqueeze(0), cloth.v_mass)
-        
-        with torch.no_grad():
-            tri = verts_pose[cloth.f.reshape(-1)].reshape(-1,3,3)
-            vectors = tri[:,1:] - tri[:,:2]
-            normal_faces = torch.cross(vectors[:, 0], vectors[:, 1], dim=-1)
-            normal_faces = normal_faces/normal_faces.norm(p=2, dim=-1, keepdim=True)
-            normal_vertices = compute_normals_per_vertex(verts_pose.unsqueeze(0), cloth.f, normal_faces.unsqueeze(0)).squeeze()
-            #print(verts_pose.shape, normal_vertices.shape)
-        loss_collision = collision_penalty_skirt(verts_pose, normal_vertices, vb.squeeze(), nb.squeeze(), eps=eps)#/5
-
-        loss_shrink = shrink_penalty(garment_update[idx_waist_v_propogate], vb.squeeze())#*10
-        
-        loss = loss_cd_keep + loss_normal*2 + loss_cd_rest + (loss_collision  + loss_bending + loss_strain + loss_gravity) + loss_shrink
-
-        if smooth_boundary:
-            edges_update = verts_pose[waist_edges.reshape(-1)].reshape(-1, 2, 3)
-            edges_oritation_update = edges_update[:, 0] - edges_update[:, 1]
-            loss_edge = (1 - F.cosine_similarity(edges_oritation_update, edges_oritation_gt, dim=-1)).mean()*10
-        else:
-            loss_edge = torch.zeros(1).cuda()
-
-        loss += loss_edge
-        print('iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_cd_rest: %0.4f, loss_cd_rest_all: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f , loss_edge: %0.4f, loss_shrink: %0.4f'%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_cd_rest.item(), loss_cd_rest_all.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_edge.item(), loss_shrink.item()))
-
-
-        if not (file_loss_path is None):
-            line = 'iter: %3d, loss: %0.4f, loss_cd_keep: %0.4f, loss_normal: %0.4f, loss_cd_rest: %0.4f, loss_cd_rest_all: %0.4f, loss_strain: %0.4f, loss_bending: %0.4f, loss_collision: %0.4f, loss_gravity: %0.4f , loss_edge: %0.4f, loss_shrink: %0.4f\n'%(i, loss.item(), loss_cd_keep.item(), loss_normal.item(), loss_cd_rest.item(), loss_cd_rest_all.item(), loss_strain.item(), loss_bending.item(), loss_collision.item(), loss_gravity.item(), loss_edge.item(), loss_shrink.item())
-            file_loss.write(line)
-
-        
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-    #print(scale_update)
-    garment_update = vertices*scale_update + offset_update
-    garment_update = garment_update*scale + trans
-    cloth_mesh = trimesh.Trimesh(garment_update.detach().squeeze().cpu().numpy(), gar_mesh.faces)
-
-
-    if not (file_loss_path is None):
-        file_loss.close()
-
-
-    return cloth_mesh
+    return mesh_verts_opt

@@ -200,14 +200,6 @@ def gravitational_energy(x, mass, g=9.81, return_average=True, shift_ground=Fals
 
 def collision_penalty(va, vb, nb, eps=2e-3, kcollision=2500):#250): # eps=2e-3 ????
     batch_size = va.shape[0]
-    '''
-    closest_vertices = NearestNeighbour(dtype=va.dtype)(va, vb)
-    vb = tf.gather(vb, closest_vertices, batch_dims=1)
-    nb = tf.gather(nb, closest_vertices, batch_dims=1)
-
-    distance = tf.reduce_sum(nb*(va - vb), axis=-1) 
-    interpenetration = tf.maximum(eps - distance, 0)
-    '''
     vec = va[:, :, None] - vb[:, None]
     dist = torch.sum(vec**2, dim=-1)
     closest_vertices = torch.argmin(dist, dim=-1)

@@ -1,11 +1,17 @@
+import trimesh
 import torch
+import torch.nn.functional as F
 import numpy as np
 from utils.smpl_utils import infer_smpl, skinning_diffuse
 from utils.mesh_utils import repair_pattern
+from utils.mesh_reader import read_mesh_from_sdf_test_batch_v2_with_label
+from utils.isp_cut import select_boundary
 
-def infer_model(images, cnn_regressor, uv_vertices):
-    images, images_body = images
+def infer_model(images_input, cnn_regressor, uv_vertices, smpl_related, verts_uv_cano_mean, transform):
+    images, images_body = images_input
     extractor, extractorBody, featuror, field, diffusion_skin = cnn_regressor
+    pose, beta, smpl_server, weight_f, weight_b, Rot_rest, pose_offsets_rest = smpl_related
+    verts_uv_cano_f_mean, verts_uv_cano_b_mean = verts_uv_cano_mean
     
     uv_vertices_f = uv_vertices.clone()
     uv_vertices_b = uv_vertices.clone()
@@ -59,7 +65,6 @@ def reconstruct_pattern_with_label(model_isp, latent_code, uv_vertices, uv_faces
         uv_input = uv_vertices[:,:2]*10
         num_points = len(uv_vertices)
         latent_code = latent_code.repeat(num_points, 1)
-        tic = time.time()
         pred_f = model_sdf_f(uv_input, latent_code)
         pred_b = model_sdf_b(uv_input, latent_code)
         sdf_pred_f = pred_f[:, 0]
@@ -72,7 +77,7 @@ def reconstruct_pattern_with_label(model_isp, latent_code, uv_vertices, uv_faces
         sdf_pred = torch.stack((sdf_pred_f, sdf_pred_b), dim=0)
         uv_vertices_batch = torch.stack((uv_vertices[:,:2], uv_vertices[:,:2]), dim=0)
         label_pred = torch.stack((label_f, label_b), dim=0)
-        vertices_new, faces_list, labels_list = mesh_reader.read_mesh_from_sdf_test_batch_v2_with_label(uv_vertices_batch, uv_faces_torch_f, sdf_pred, label_pred, edges, reorder=True)
+        vertices_new, faces_list, labels_list = read_mesh_from_sdf_test_batch_v2_with_label(uv_vertices_batch, uv_faces_torch_f, sdf_pred, label_pred, edges, reorder=True)
         vertices_new_f = vertices_new[0]
         vertices_new_b = vertices_new[1]
         faces_new_f = faces_list[0]
@@ -91,7 +96,6 @@ def reconstruct_pattern_with_label(model_isp, latent_code, uv_vertices, uv_faces
             mesh_pattern_f = repair_pattern(mesh_pattern_f, res=256)
             print('repair mesh_pattern_b')
             mesh_pattern_b = repair_pattern(mesh_pattern_b, res=256)
-            
         
         pattern_vertices_f = torch.FloatTensor(mesh_pattern_f.vertices).cuda()[:,:2]
         pattern_vertices_b = torch.FloatTensor(mesh_pattern_b.vertices).cuda()[:,:2]
@@ -127,3 +131,16 @@ def rescale_cloth(beta, body_zero, smpl_server):
     len_v_zero = body_zero.vertices.max(axis=0) - body_zero.vertices.min(axis=0)
     scale = len_v/len_v_zero
     return scale
+
+def pseudo_waist(smpl_related, diffusion_skin, verts_rest, waist_edges, scale, trans):
+    # compute pseudo edges for waist
+    pose, beta, smpl_server, _, _, Rot_rest, pose_offsets_rest = smpl_related
+    w_smpl, tfs, verts_body, pose_offsets, shape_offsets, root_J = infer_smpl(pose, beta, smpl_server, return_root=True)
+    weight_skin = diffusion_skin(verts_rest*10)
+    weight_skin = F.softmax(weight_skin, dim=-1)
+    verts_pose_skin = skinning_diffuse(verts_rest.unsqueeze(0), w_smpl, tfs, pose_offsets, shape_offsets, weight_skin, Rot_rest, pose_offsets_rest)
+    verts_pose_skin -= root_J
+    verts_pose_skin = verts_pose_skin.squeeze().detach()
+    verts_pose_skin = verts_pose_skin*scale + trans
+    edges_pseudo = verts_pose_skin[waist_edges.reshape(-1)].reshape(-1, 2, 3)
+    return edges_pseudo

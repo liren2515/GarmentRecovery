@@ -5,8 +5,8 @@ import numpy as np
 
 from networks import SDF, convnext, diffusion
 from utils.isp_cut import create_uv_mesh
+from smpl_pytorch.body_models import SMPL
 from utils.smpl_utils import infer_smpl
-
 
 def init_uv_mesh(x_res=128, y_res=128, garment='Skirt'):
     uv_vertices, uv_faces = create_uv_mesh(x_res, y_res, debug=False)
@@ -17,20 +17,21 @@ def init_uv_mesh(x_res=128, y_res=128, garment='Skirt'):
     pattern_mean = np.load('../extra-data/pattern-mean-%s.npz'%garment)
     verts_uv_cano_f_mean = torch.FloatTensor(pattern_mean['verts_uv_cano_f_mean']).cuda()
     verts_uv_cano_b_mean = torch.FloatTensor(pattern_mean['verts_uv_cano_b_mean']).cuda()
+    '''
     if garment == 'Skirt':
         verts_uv_cano_f_mean[:,1] += 0.1
         verts_uv_cano_b_mean[:,1] += 0.1
+    '''
+    
+    verts_uv_cano_mean = [verts_uv_cano_f_mean, verts_uv_cano_b_mean]
 
     diffusion_pattern_mean = np.load('../extra-data/diffusion-pattern-mean-%s.npz'%garment)
-    print([k for k in diffusion_pattern_mean.keys()])
-    sys.exit()
     weight_f = torch.FloatTensor(diffusion_pattern_mean['weight_f']).cuda()
     weight_b = torch.FloatTensor(diffusion_pattern_mean['weight_b']).cuda()
+    return mesh_uv, uv_vertices, uv_faces, edges, verts_uv_cano_mean, weight_f, weight_b
 
-    return mesh_uv, uv_vertices, uv_faces, edges, verts_uv_cano_f_mean, verts_uv_cano_b_mean, weight_f, weight_b
 
-
-def init_smpl_sever(gender='f', model_path='../snug-pytorch/smpl_pytorch'):
+def init_smpl_sever(gender='f', model_path='../smpl_pytorch'):
     smpl_server = SMPL(model_path=model_path,
                             gender=gender,
                             use_hands=False,
@@ -56,11 +57,11 @@ def load_model(numG=400, garment='Skirt'):
     model_atlas_f = SDF.SDF(d_in=2+rep_size, d_out=3, dims=[256, 256, 256, 256, 256, 256], skip_in=[3]).cuda()
     model_atlas_b = SDF.SDF(d_in=2+rep_size, d_out=3, dims=[256, 256, 256, 256, 256, 256], skip_in=[3]).cuda()
 
-    model_sdf_f.load_state_dict(torch.load('../checkpoint/sdf_f_%s.pth'%garment))
-    model_sdf_b.load_state_dict(torch.load('../checkpoint/sdf_b_%s.pth'%garment))
-    model_rep.load_state_dict(torch.load('../checkpoint/rep_%s.pth'%garment))
-    model_atlas_f.load_state_dict(torch.load('../checkpoint/atlas_f_%s.pth'%garment))
-    model_atlas_b.load_state_dict(torch.load('../checkpoint/atlas_b_%s.pth'%garment))
+    model_sdf_f.load_state_dict(torch.load('../checkpoints/sdf_f_%s.pth'%garment))
+    model_sdf_b.load_state_dict(torch.load('../checkpoints/sdf_b_%s.pth'%garment))
+    model_rep.load_state_dict(torch.load('../checkpoints/rep_%s.pth'%garment))
+    model_atlas_f.load_state_dict(torch.load('../checkpoints/atlas_f_%s.pth'%garment))
+    model_atlas_b.load_state_dict(torch.load('../checkpoints/atlas_b_%s.pth'%garment))
     latent_codes = model_rep.weights.detach()
     
     extractor = convnext.ConvNeXtExtractor(n_stages=4).cuda()
@@ -68,10 +69,10 @@ def load_model(numG=400, garment='Skirt'):
     featuror = convnext.FeatureNetwork_xyz(context_dims=(96, 192, 384, 768), ave=False, cat_xyz=True).cuda()
     field = convnext.MLP(d_in=featuror.feature_dim*4, d_out=4, width=400, depth=9, gaussian=True, skip_layer=[5]).cuda()
 
-    extractor.load_state_dict(torch.load('../checkpoint/extractor_%s.pth'%garment))
-    extractorBody.load_state_dict(torch.load('../checkpoint/extractorBody_%s.pth'%garment))
-    featuror.load_state_dict(torch.load('../checkpoint/featuror_%s.pth'%garment))
-    field.load_state_dict(torch.load('../checkpoint/field_%s.pth'%garment))
+    extractor.load_state_dict(torch.load('../checkpoints/extractor_%s.pth'%garment))
+    extractorBody.load_state_dict(torch.load('../checkpoints/extractorBody_%s.pth'%garment))
+    featuror.load_state_dict(torch.load('../checkpoints/featuror_%s.pth'%garment))
+    field.load_state_dict(torch.load('../checkpoints/field_%s.pth'%garment))
 
     extractor.eval()
     extractorBody.eval()
@@ -79,7 +80,7 @@ def load_model(numG=400, garment='Skirt'):
     field.eval()
 
     diffusion_skin = diffusion.skip_connection(d_in=3, width=512, depth=8, d_out=6890, skip_layer=[]).cuda()
-    diffusion_skin.load_state_dict(torch.load('../checkpoint/diffusion_skin.pth'))
+    diffusion_skin.load_state_dict(torch.load('../checkpoints/diffusion_skin.pth'))
     diffusion_skin.eval()
     
     model_cnn_regressor = [extractor, extractorBody, featuror, field, diffusion_skin]

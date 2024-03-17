@@ -4,7 +4,6 @@ import trimesh
 import pymesh
 
 def concatenate_mesh(mesh_left, mesh_right):
-
     verts = np.concatenate((mesh_left.vertices, mesh_right.vertices), axis=0)
     faces = np.concatenate((mesh_left.faces, len(mesh_left.vertices) + mesh_right.faces), axis=0)
 
@@ -15,9 +14,7 @@ def flip_mesh(mesh):
     verts = mesh.vertices.copy()
     verts[:, 0] *=-1
     mesh_new = trimesh.Trimesh(verts, mesh.faces[:,[0,2,1]], validate=False, process=False)
-
     return mesh_new
-
 
 def repair_pattern(mesh_trimesh, res=128):
 
@@ -43,7 +40,6 @@ def repair_pattern(mesh_trimesh, res=128):
         if count > 10: break
 
     mesh_trimesh_new  = trimesh.Trimesh(mesh.vertices, mesh.faces, validate=False, process=False)
-
     return mesh_trimesh_new
 
 def barycentric_faces(mesh_query, mesh_base):

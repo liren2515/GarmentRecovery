@@ -1,5 +1,7 @@
+import os
 import cv2
 import numpy as np
+import torch
 from utils import renderer
 
 def process_image(image, size=256):
@@ -23,27 +25,27 @@ def process_seg(image):
 
     return image
 
-def prepare_input(normal_econ_512, mask_sam, body_verts, body_faces, body_renderer, result_path, save_img=True):
+def prepare_input(normal_input, normal_econ_512, mask_sam, body_verts, body_faces, body_renderer, result_path, save_img=True):
     normal_econ_512 = ((normal_econ_512*0.5+0.5)*255).astype(np.uint8)
 
     mask_normal = normal_econ_512*mask_sam[:,:,None]
 
     body_verts = torch.FloatTensor(body_verts).cuda()
     body_faces = torch.LongTensor(body_faces).cuda()
-    body_seg_f = renderer.render_body_seg(body_verts, body_faces, body_renderer)[:,:,[0]]
+    body_seg_f_img = renderer.render_body_seg(body_verts, body_faces, body_renderer)[:,:,[0]]
 
     body_verts_flip = body_verts.clone()
     body_verts_flip[:, 0] *= -1
     body_verts_flip[:, -1] *= -1
-    body_seg_b = renderer.render_body_seg(body_verts_flip, body_faces, body_renderer)[:,:,[0]]
-    body_seg_b = np.fliplr(body_seg_b)
+    body_seg_b_img = renderer.render_body_seg(body_verts_flip, body_faces, body_renderer)[:,:,[0]]
+    body_seg_b_img = np.fliplr(body_seg_b_img)
 
     body_xyz_f, body_xyz_f_image = renderer.render_body_xyz(body_verts, body_faces, body_renderer, vis_back=False)
     body_xyz_b, body_xyz_b_image = renderer.render_body_xyz(body_verts, body_faces, body_renderer, vis_back=True)
 
-    normal_img = process_image(normal_econ)
-    body_seg_f = process_seg(body_seg_f)
-    body_seg_b = process_seg(body_seg_b)
+    normal_img = process_image(normal_input)
+    body_seg_f = process_seg(body_seg_f_img)
+    body_seg_b = process_seg(body_seg_b_img)
     images = np.transpose(normal_img, (2,0,1))
     images_body = np.concatenate((body_seg_f, body_xyz_f, body_seg_b, body_xyz_b), axis=-1)
     images_body = np.transpose(images_body, (2,0,1))
@@ -52,8 +54,8 @@ def prepare_input(normal_econ_512, mask_sam, body_verts, body_faces, body_render
 
     if save_img:
         cv2.imwrite(os.path.join(result_path, 'mask_normal.png'), mask_normal[:,:,[2,1,0]])
-        cv2.imwrite(os.path.join(result_path, 'body_seg_f.png'), body_seg_f)
-        cv2.imwrite(os.path.join(result_path, 'body_seg_b.png'), body_seg_b)    
+        cv2.imwrite(os.path.join(result_path, 'body_seg_f.png'), body_seg_f_img)
+        cv2.imwrite(os.path.join(result_path, 'body_seg_b.png'), body_seg_b_img)    
         cv2.imwrite(os.path.join(result_path, 'body_xyz_f.png'), body_xyz_f_image)
         cv2.imwrite(os.path.join(result_path, 'body_xyz_b.png'), body_xyz_b_image)
 
