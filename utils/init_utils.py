@@ -51,8 +51,14 @@ def init_smpl_sever(gender='f', model_path='../smpl_pytorch'):
 
 def load_model(numG=400, garment='Skirt'):
     rep_size = 32
-    model_sdf_f = SDF.SDF2branch_deepSDF(d_in=2+rep_size, d_out=1+3, dims=[256, 256, 256, 256, 256, 256], skip_in=[3]).cuda()
-    model_sdf_b = SDF.SDF2branch_deepSDF(d_in=2+rep_size, d_out=1+3, dims=[256, 256, 256, 256, 256, 256], skip_in=[3]).cuda()
+    if garment == 'Skirt':
+        num_labels = 3
+        numG = 400
+    elif garment == 'Shirt':
+        num_labels = 4
+        numG = 268
+    model_sdf_f = SDF.SDF2branch_deepSDF(d_in=2+rep_size, d_out=1+num_labels, dims=[256, 256, 256, 256, 256, 256], skip_in=[3]).cuda()
+    model_sdf_b = SDF.SDF2branch_deepSDF(d_in=2+rep_size, d_out=1+num_labels, dims=[256, 256, 256, 256, 256, 256], skip_in=[3]).cuda()
     model_rep = SDF.learnt_representations(rep_size=rep_size, samples=numG).cuda()
     model_atlas_f = SDF.SDF(d_in=2+rep_size, d_out=3, dims=[256, 256, 256, 256, 256, 256], skip_in=[3]).cuda()
     model_atlas_b = SDF.SDF(d_in=2+rep_size, d_out=3, dims=[256, 256, 256, 256, 256, 256], skip_in=[3]).cuda()

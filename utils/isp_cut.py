@@ -4,11 +4,9 @@ import trimesh
 import networkx as nx
 from scipy.spatial import Delaunay
 from functools import reduce
-
 import matplotlib.pyplot as plt
-from shapely.geometry import Polygon, MultiPoint, Point
-from shapely.prepared import prep
-
+from scipy.sparse import coo_matrix
+from collections import defaultdict
 
 def select_boundary(mesh):
     unique_edges = mesh.edges[trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)]
