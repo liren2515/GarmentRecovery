@@ -132,7 +132,7 @@ def rescale_cloth(beta, body_zero, smpl_server):
     scale = len_v/len_v_zero
     return scale
 
-def pseudo_waist(smpl_related, diffusion_skin, verts_rest, waist_edges, scale, trans):
+def pseudo_e(smpl_related, diffusion_skin, verts_rest, waist_edges, scale, trans):
     # compute pseudo edges for waist
     pose, beta, smpl_server, _, _, Rot_rest, pose_offsets_rest = smpl_related
     w_smpl, tfs, verts_body, pose_offsets, shape_offsets, root_J = infer_smpl(pose, beta, smpl_server, return_root=True)
