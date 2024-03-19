@@ -13,10 +13,10 @@
   ```
   conda create --name py38 python=3.8 -y
   conda activate py38
-  conda install pytorch==2.0.1 torchvision pytorch-cuda=11.8 -c pytorch -c nvidia -y && conda install -c fvcore -c iopath -c conda-forge fvcore iopath -y && conda install -c bottler nvidiacub -y && conda install -c conda-forge igl -y && conda install pytorch3d -c pytorch3d -y
+  conda install pytorch==2.0.1 torchvision pytorch-cuda=11.8 -c pytorch -c nvidia -y && conda install -c fvcore -c iopath -c conda-forge fvcore iopath -y && conda install -c bottler nvidiacub -y &&  conda install pytorch3d -c pytorch3d -y
 
   # Install pip dependencies
-  pip install numpy==1.23 chumpy opencv-python torchgeometry rtree h5py plyfile cycler einops kornia mediapipe
+  pip install numpy==1.23 chumpy opencv-python torchgeometry rtree plyfile cycler einops kornia mediapipe
   pip install hydra-core matplotlib scikit-image pyglet==1.5.7 shapely
 
   ```
@@ -39,9 +39,7 @@
     │   └── shirt
     |   └── skirt
     │   └── trousers
-    ├── networks
-    |   └──body_pose_estimator
-    |       └── checkpoint_iter_370000.pth     
+    ├── networks    
     └── smpl_pytorch
     └── snug
     └── utils
