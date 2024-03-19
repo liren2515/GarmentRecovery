@@ -6,28 +6,15 @@ This is the repo for [**Garment Recovery with Shape and Deformation Priors**](ht
 ## Setup & Install
 See [INSTALL.md](doc/INSTALL.md)
 
-## Inference
-For garment generation:
-```
-python infer_isp.py --which tee/pants/skirt --save_path tmp --save_name skirt --res 256 --idx_G 0
-```
-
-For layering inference:
-```
-python infer_layering.py
-```
-
 ## Fitting
-For fitting ISP to 3D garment mesh in rest pose:
+You can use the scripts under `./fit` to recover garment from the prepared images in `./fitting-data`:
 ```
-python fitting_3D_mesh.py --which tee/pants/skirt --save_path tmp --save_name skirt-fit --res 256
+cd fit
+python fit_xxx.py # xxx is the type of the garment.
 ```
 
-For fitting ISP to images:
-```
-python fitting_image.py
-```
-The example files are under `./extra-data/fitting-sample/`, including the segmentation mask `mask.png` and the SMPL parameters `mocap.pkl`. We use [Self-Correction-Human-Parsing](https://github.com/GoGoDuck912/Self-Correction-Human-Parsing) to produce garment masks, and [frankmocap](https://github.com/facebookresearch/frankmocap) to estimate SMPL parameters.
+## Prepare your own data
+If you want to prepare your own data for fitting, please check [DATA_PREPARE.md](doc/DATA_PREPARE.md)
 
 ## Citation
 If you find our work useful, please cite it as:

@@ -238,7 +238,7 @@ def reconstruct(cnn_regressor, model_isp, latent_codes, images_input, mask_norma
     return mesh_verts_opt
 
 if __name__ == "__main__":
-    ROOT_PATH = '../fitting-data/shirt'
+    ROOT_PATH = '../fitting-data/jacket'
     mesh_uv, uv_vertices, uv_faces, edges, verts_uv_cano_mean, weight_f, weight_b = init_uv_mesh(x_res=128, y_res=128, garment='Shirt')
     uv = [mesh_uv, uv_vertices, uv_faces, edges]
     smpl_server, Rot_rest, pose_offsets_rest = init_smpl_sever()
@@ -271,11 +271,11 @@ if __name__ == "__main__":
         file_loss = open(file_loss_path, 'w')
         file_loss.close()
             
-        model_isp, latent_codes, model_cnn_regressor = load_model(numG=268, garment='Shirt')
+        model_isp, latent_codes, model_cnn_regressor = load_model(numG=132, garment='Jacket')
 
         vid = torch.load(os.path.join(econ_dir, 'vid/%s_in_tensor.pt'%images_list[i].split('.')[0]))
         normal_econ_512 = vid['normal_F'][0].permute(1,2,0).cpu().numpy()
-        mask_sam = cv2.imread(os.path.join(seg_dir, '%s-sam-labeled.png'%images_list[i].split('.')[0]))[:,:,0] == 60
+        mask_sam = cv2.imread(os.path.join(seg_dir, '%s-sam-labeled.png'%images_list[i].split('.')[0]))[:,:,0] == 120
 
         normal_input = cv2.imread(os.path.join(align_dir, '%s_normal_align.png'%images_list[i].split('.')[0]))
         data = np.load(os.path.join(align_dir, '%s_bni_v2.npz'%images_list[i].split('.')[0]))
