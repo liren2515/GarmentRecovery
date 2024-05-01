@@ -7,21 +7,15 @@ import torch
 import trimesh
 import os, sys
 sys.path.append('../')
-from utils.mesh import rotate_pose
-from econ.pixielib.utils.config import cfg as pixie_cfg
-from econ.pixielib.models.SMPLX import SMPLX as PIXIE_SMPLX
-from econ.pixielib.utils.geometry import batch_rodrigues
+from utils.mesh_utils import rotate_pose
+from smplx_econ.pixielib.utils.config import cfg as pixie_cfg
+from smplx_econ.pixielib.models.SMPLX import SMPLX as PIXIE_SMPLX
+from smplx_econ.pixielib.utils.geometry import batch_rodrigues
 
-image_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/open-shirt/images/'
-econ_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/open-shirt/processed/econ'
-output_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/open-shirt/processed/bodys/smplx'
-image_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/skirt/images/'
-econ_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/skirt/processed/econ'
-output_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/skirt/processed/bodys/smplx'
+image_dir = '/fitting-data/garment/images'
+econ_dir = './fitting-data/garment/processed/econ/png/'
+output_dir = './fitting-data/garment/processed/bodys/smplx'
 
-image_dir = '/scratch/cvlab/home/ren/code/cloth-from-image/fitting-data/video/images/'
-econ_dir = '/scratch/cvlab/home/ren/code/cloth-from-image/fitting-data/video/processed/econ'
-output_dir = '/scratch/cvlab/home/ren/code/cloth-from-image/fitting-data/video/processed/bodys/smplx'
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 images = os.listdir(image_dir)
@@ -63,13 +57,8 @@ for i in range(len(images)):
     root_joint = joints[0, 0].detach().cpu().numpy()
     body = trimesh.Trimesh(verts.detach().squeeze().cpu().numpy(), faces_tensor.squeeze().detach().cpu().numpy())
 
-    '''
-    body.vertices -= root_joint
-    body = apply_rotation(np.pi, body, 'x')
-    body.vertices += root_joint
-    '''
-
     body.export(os.path.join(output_dir, '%s_smplx.obj'%images[i].split('.')[0]))
+
 
 ##########################
 # step 2

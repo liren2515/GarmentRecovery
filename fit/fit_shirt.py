@@ -10,7 +10,7 @@ sys.path.append('../')
 from utils import mesh_reader, renderer
 from utils.init_utils import init_uv_mesh, init_smpl_sever, load_model
 from utils.img_utils import prepare_input
-from utils.mesh_utils import concatenate_mesh, flip_mesh, repair_pattern, barycentric_faces, project_waist
+from utils.mesh_utils import concatenate_mesh, flip_mesh, repair_pattern, barycentric_faces
 from utils.isp_cut import select_boundary, connect_2_way, one_ring_neighour, create_uv_mesh, select_collar_offset, remove_collar, smooth_boundary, select_sleeve, select_sleeve_boundary
 from utils.smpl_utils import infer_smpl, skinning_diffuse
 from utils.fit_utils import infer_model, reconstruct_pattern_with_label, rescale_cloth, pseudo_e

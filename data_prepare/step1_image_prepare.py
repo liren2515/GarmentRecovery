@@ -22,14 +22,6 @@ import torch
 import matplotlib.pyplot as plt
 import sys, os
 
-input_dir = './fitting-data/garment/images'
-crop_dir = './fitting-data/garment/processed/crop'
-econ_dir = './fitting-data/garment/processed/econ/png/'
-output_dir = './fitting-data/garment/processed/segmentation'
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
-images = os.listdir(input_dir)
-
 def show_anns(anns):
     np.random.seed(0)
     if len(anns) == 0:
@@ -112,6 +104,13 @@ def assign_label_to_sam(sam_result, SCHP_result):
 
     return sam_garment_label
 
+
+input_dir = '/fitting-data/garment/images'
+crop_dir = './fitting-data/garment/processed/crop'
+output_dir = './fitting-data/garment/processed/segmentation'
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+images = os.listdir(input_dir)
 
 sam_checkpoint = "./segment-anything/sam_vit_h_4b8939.pth"
 model_type = "vit_h"

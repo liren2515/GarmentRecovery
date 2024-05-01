@@ -2,6 +2,7 @@ import os,sys
 import numpy as np 
 import trimesh
 import pymesh
+import torch
 
 def concatenate_mesh(mesh_left, mesh_right):
     verts = np.concatenate((mesh_left.vertices, mesh_right.vertices), axis=0)
@@ -57,3 +58,20 @@ def project_waist(v_waist, mesh_base, threshold=0.01):
     
     closest_pt = closest_pt+face_normals*threshold
     return closest_pt
+
+def rotate_pose(pose, angle, which_axis='x'):
+    # pose: (n, 72)
+    
+    from scipy.spatial.transform import Rotation as R
+    is_tensor = torch.is_tensor(pose)
+    if is_tensor:
+        pose = pose.cpu().detach().numpy()
+    
+    swap_rotation = R.from_euler(which_axis, [angle/np.pi*180], degrees=True)
+    root_rot = R.from_rotvec(pose[:, :3])
+    pose[:, :3] = (swap_rotation * root_rot).as_rotvec()
+
+    if is_tensor:
+        pose = torch.FloatTensor(pose).cuda()
+
+    return pose

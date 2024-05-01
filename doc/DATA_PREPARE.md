@@ -24,7 +24,7 @@ python ./data_prepare/step0_run_ECON.py
 ```
 
 ## Step 1 - Segmentation
-We use [SAM](https://github.com/facebookresearch/segment-anything) to get the segmentaion masks and [SCHP](https://github.com/GoGoDuck912/Self-Correction-Human-Parsing) to assign sematic labels for the segmentation, respectively. 
+We use [SAM](https://github.com/facebookresearch/segment-anything) to get the segmentation masks and [SCHP](https://github.com/GoGoDuck912/Self-Correction-Human-Parsing) to assign sematic labels for the segmentation, respectively. 
 
 First, you can follow the instruction of [SCHP](https://github.com/GoGoDuck912/Self-Correction-Human-Parsing) to install it and download the LIP checkpoint. Then you can use the following cmd to get the sematic segmentations.
 ```
@@ -35,9 +35,23 @@ Second, install [SAM](https://github.com/facebookresearch/segment-anything) and 
 ```
 pip install git+https://github.com/facebookresearch/segment-anything.git
 ```
-Then, change the value of `sam_checkpoint` to the path where you store the `vit_h` checkpoint in `./data_prepare/step0_run_ECON.py`, and run 
+Then, change the value of `sam_checkpoint` to the path where you store the `vit_h` checkpoint in `./data_prepare/step1_image_prepare.py`, and run 
 ```
-python ./data_prepare/step0_run_ECON.py
+python ./data_prepare/step1_image_prepare.py
 ```
-Note that sometimes the segmentaion results can be bad... You need to manually check them unless you have a better (reliable) model for garment segmentation.
+Note that sometimes the segmentation results can be bad... You need to manually check them unless you have a better (reliable) model for garment segmentation.
 
+## Step 2 - SMPL Body Parameters
+Run the following cmd to extract SMPL-X parameters from the results of ECON. 
+```
+python ./data_prepare/step2_body_prepare.py
+```
+
+Since we use the SMPL body model, to convert the SMPL-X parameters to SMPL, please refer to [smplx](https://github.com/vchoutas/smplx/tree/main/transfer_model). The extracted SMPL-X parameters are at `./fitting-data/garment/processed/bodys/smplx`. You should put the converted SMPL parameters at `./fitting-data/garment/processed/bodys/smpl`.
+
+## Step 3 - Alignment
+To align ECON's results with the camera settings of the synthetic data used to train our model, run
+```
+python ./data_prepare/step3_bni_prepare.py
+```
+For different types of garment, you should set different values to `target_label`. See the comments of Line61-66 in `step3_bni_prepare.py`.

@@ -72,6 +72,41 @@ def get_connected_paths_skirt(mesh, idx_boundary_v, boundary_edges):
 
     return return_paths
 
+def get_connected_paths_trousers(mesh, idx_boundary_v, boundary_edges):
+    idx_boundary_v_set = set(idx_boundary_v)
+    one_rings = one_ring_neighour(idx_boundary_v, mesh, is_dic=True, mask_set=idx_boundary_v_set)
+
+    paths = []
+    path_y_mean = []
+    path_x_mean = []
+    while len(idx_boundary_v_set):
+        path, idx_boundary_v_set = connect_2_way(idx_boundary_v_set, one_rings, boundary_edges)
+
+        paths.append(path)
+        path_y_mean.append(mesh.vertices[path, 1].mean())
+        path_x_mean.append(mesh.vertices[path, 0].mean())
+    
+    if len(paths) != 3:
+        raise Exception("Something wrong: len(paths) - get_connected_paths!!")
+
+    top_path_i = path_y_mean.index(max(path_y_mean))
+    top_path = paths[top_path_i]
+
+    left_right_i = set([0,1,2])
+    left_right_i.remove(top_path_i)
+    left_right_i = list(left_right_i)
+    left_right_i = left_right_i if path_x_mean[left_right_i[0]] < path_x_mean[left_right_i[1]] else left_right_i[::-1]
+    left_i, right_i = left_right_i
+    left_path = paths[left_i]
+    right_path = paths[right_i]
+
+    return_paths = [top_path, left_path, right_path]
+
+    if sorted([left_i, right_i, top_path_i]) != [0, 1, 2]:
+        raise Exception("Something wrong get_connected_paths!!")
+
+    return return_paths
+
 def one_ring_neighour(idx_v, mesh, is_dic=False, mask_set=None):
     g = nx.from_edgelist(mesh.edges_unique)
     valid_v_i = set(np.unique(mesh.faces.flatten()).tolist())
@@ -96,7 +131,6 @@ def one_ring_neighour(idx_v, mesh, is_dic=False, mask_set=None):
 
         one_ring = one_ring_dic
     return one_ring
-
 
 def create_uv_mesh(x_res, y_res, debug=False):
     x = np.linspace(1, -1, x_res)

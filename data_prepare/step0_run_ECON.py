@@ -11,9 +11,6 @@ python -m apps.infer -cfg ./configs/econ.yaml -in_dir $ROOT_PATH/fitting-data/ga
 import os, sys
 import cv2
 
-# change ROOT_PATH to where you put your images
-ROOT_PATH = '.'
-
 # extract cropped images
 input_dir = './fitting-data/garment/images/'
 econ_dir = './fitting-data/garment/processed/econ/png/'
