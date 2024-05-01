@@ -2,115 +2,17 @@ import os, sys
 import numpy as np 
 import torch
 import trimesh
-import random
 import cv2
-import torch.nn.functional as F
-from pytorch3d.structures import Meshes
-from pytorch3d.renderer import TexturesVertex
 
 sys.path.append('../')
 from utils.readfile import load_pkl
-from utils.mesh import apply_rotation, rotate_pose
-from utils.render_normal import get_render
-from utils.rasterize import get_raster, get_pix_to_face
+from utils import renderer
 from smpl_pytorch.body_models import SMPL
-from econ.pixielib.utils.geometry import rotation_matrix_to_angle_axis
-
-def collect_projected_vertices(mesh, transform, silh, res=512):
-    vertices = torch.FloatTensor(mesh.vertices).cuda().unsqueeze(0)
-    vertices_2d = transform.transform_points(vertices)
-    vertices_2d = torch.round(vertices_2d[0,:,:2]*(-255.5) + 255.5).cpu().numpy().astype(int)
-    keep = silh[vertices_2d[:,1], vertices_2d[:,0], 0] == 1
-    
-    vertices_keep = mesh.vertices[keep]
-    
-    C_g = np.array([[0,0,0]]*mesh.vertices.shape[0], np.uint8)
-    C_g[keep] = 255
-    mesh.visual.vertex_colors = C_g
-    #mesh.export('collect_projected_vertices.obj')
-    
-    return vertices_keep, mesh
-
-
-def get_pix_to_face(verts, faces, raster, silh):
-    mesh_py3d = Meshes(
-            verts=[verts],   
-            faces=[faces],
-            textures=TexturesVertex(verts_features=torch.ones_like(verts[None]))
-        )
-
-    #image = renderer(mesh_py3d)[0,:,:,:3]
-    #cv2.imwrite('../tmp/image.png', (image*255).detach().cpu().numpy().astype(np.uint8))
-    #sys.exit()
-    Fragments = raster(mesh_py3d)
-    pix_to_face = Fragments.pix_to_face.squeeze()
-    #pix_to_face[::2,::2] = -1
-    #silh[::2,::2] = 0
-    valid_pixel = torch.logical_and(pix_to_face > -1, silh == 1)
-
-    valid_faces = pix_to_face[valid_pixel]
-
-    valid_faces = torch.unique(valid_faces.flatten())
-    valid_vertices = torch.unique(faces[valid_faces].flatten())
-    #print(len(valid_vertices),pix_to_face.max(), silh.max())
-    return valid_faces, valid_vertices
-
-def collect_projected_vertices_v2(mesh, raster, silh, res=512):
-    vertices = torch.FloatTensor(mesh.vertices).cuda()
-    faces = torch.LongTensor(mesh.faces).cuda()
-    _, idx_v = get_pix_to_face(vertices, faces, raster, silh)
-    idx_v = idx_v.detach().cpu().numpy()
-
-    vertices_keep = mesh.vertices[idx_v]
-    
-    C_g = np.array([[0,0,0]]*mesh.vertices.shape[0], np.uint8)
-    C_g[idx_v] = 255
-    mesh.visual.vertex_colors = C_g
-    #mesh.export('collect_projected_vertices.obj')
-    
-    return vertices_keep, mesh
-'''
-def split_front_back(mesh):
-    meshes = mesh.split(only_watertight=False)
-    z_max = -100
-    keep = -1
-    for i in range(len(meshes)):
-        if meshes[i].vertices[:, -1].mean() > z_max:
-            z_max = meshes[i].vertices[:, -1].mean()
-            keep = i
-    if keep == 0:
-        i_back = 1
-    else:
-        i_back = 0
-
-    return meshes[keep], meshes[i_back]
-'''
-def split_front_back(mesh):
-    meshes = mesh.split(only_watertight=False)
-    z_max = -100
-    keep = -1
-
-    num_v = []
-    for mesh in meshes:
-        num_v.append(len(mesh.vertices))
-    idx = sorted(range(len(num_v)), key=lambda k: num_v[k])[::-1][:2]
-    meshes = meshes[idx]
-
-    for i in range(len(meshes)):
-        if meshes[i].vertices[:, -1].mean() > z_max:
-            z_max = meshes[i].vertices[:, -1].mean()
-            keep = i
-    if keep == 0:
-        i_back = 1
-    else:
-        i_back = 0
-
-    return meshes[keep], meshes[i_back]
+from smplx_econ.pixielib.utils.geometry import rotation_matrix_to_angle_axis
 
 def infer_smpl(pose, beta, smpl_server, return_joints=False):
     with torch.no_grad():
         output = smpl_server.forward_custom(betas=beta,
-                                    #transl=transl,
                                     body_pose=pose[:, 3:],
                                     global_orient=pose[:, :3],
                                     return_verts=True,
@@ -130,9 +32,8 @@ def infer_smpl(pose, beta, smpl_server, return_joints=False):
         return verts
 
 def init_smpl_sever(gender='f'):
-    smpl_server = SMPL(model_path='/cvlabdata2/home/ren/snug-pytorch/smpl_pytorch',
+    smpl_server = SMPL(model_path='../smpl_pytorch',
                             gender=gender,
-                            #batch_size=1,
                             use_hands=False,
                             use_feet_keypoints=False,
                             dtype=torch.float32).cuda()
@@ -157,36 +58,26 @@ def align_image(image, warp_mat, size=256):
     image_new = cv2.warpAffine(image, warp_mat, (cols, rows))
     return image_new
 
-target_label = 180# trousers 240 # skirt
-image_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/open-shirt/images/'
-econ_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/open-shirt/processed/econ'
-seg_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/open-shirt/processed/segmentation'
-smpl_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/open-shirt/processed/bodys/smpl'
-#output_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/open-shirt/processed/align'
-output_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/trousers/processed/align'
+#######################################
+# shirt: 60
+# jacket: 120
+# trousers: 180
+# skirt: 240
+#######################################
+target_label = 180
+image_dir = '/fitting-data/garment/images'
+econ_dir = './fitting-data/garment/processed/econ'
+seg_dir = './fitting-data/garment/processed/segmentation'
+smpl_dir = './fitting-data/garment/processed/bodys/smpl'
+output_dir = './fitting-data/garment/processed/align'
 
-'''
-image_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/skirt/images/'
-econ_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/skirt/processed/econ'
-seg_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/skirt/processed/segmentation'
-smpl_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/skirt/processed/bodys/smpl'
-#output_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/close-shirt/processed/align'
-output_dir = '/cvlabdata2/home/ren/cloth-from-image/fitting-data/skirt/processed/align'
-'''
 images = os.listdir(image_dir)
 
 smpl_server = init_smpl_sever()
-_, _, transform_80 = get_render(render_res=512, scale=80, return_transform=True, sigma=1e-7)
-_, _, transform_100 = get_render(render_res=512, scale=100, return_transform=True, sigma=1e-7)
-
-raster = get_raster(render_res=512, scale=100, faces_per_pixel=1)
+transform = renderer.get_transform(scale=80)
+transform_100 = renderer.get_transform(scale=100)
 
 for i in range(len(images)):
-#for i in range(20, 40):
-    #if i==23:
-    #    continue
-    #i = 26
-    print(i)
     if not os.path.isfile(os.path.join(econ_dir, 'vid/%s_in_tensor.pt'%images[i].split('.')[0])):
         continue
     vid = torch.load(os.path.join(econ_dir, 'vid/%s_in_tensor.pt'%images[i].split('.')[0]))
@@ -233,28 +124,7 @@ for i in range(len(images)):
     normal_econ_align = align_image(normal_econ.copy(), warp_mat)
     cv2.imwrite(os.path.join(output_dir, '%s_normal_align.png'%images[i].split('.')[0]), normal_econ_align)
 
-    '''
-    mesh_bni = trimesh.load(os.path.join(econ_dir, 'obj/%s_0_BNI.obj'%images[i].split('.')[0]))
-    mesh_bni_front, mesh_bni_back = split_front_back(mesh_bni)
-    mesh_bni_front.export('../tmp/mesh_bni_front.obj')
-    vertices_keep, mesh = collect_projected_vertices(mesh_bni_front, transform_100, mask_sam, res=512)
-    vertices_all = np.concatenate((vertices_keep, mesh_bni_back.vertices), axis=0)
-
-    
-    mesh.export(os.path.join(output_dir, '%s_collect_projected_vertices.obj'%images[i].split('.')[0]))
-    np.savez(os.path.join(output_dir, '%s_bni'%images[i].split('.')[0]), 
-                          vertices_keep=vertices_keep, vertices_all=vertices_all,
-                          trans=trans.cpu().numpy(), scale=scale.cpu().numpy(),
-                          pose=pose_smpl.cpu().numpy(), beta=beta_smpl.cpu().numpy(), )
-    '''
-    mesh_bni = trimesh.load(os.path.join(econ_dir, 'obj/%s_0_BNI.obj'%images[i].split('.')[0]))
-    mesh_full = trimesh.load(os.path.join(econ_dir, 'obj/%s_0_full.obj'%images[i].split('.')[0]))
-    vertices_keep, mesh = collect_projected_vertices_v2(mesh_bni, raster, torch.from_numpy(mask_sam[:,:,0]).cuda(), res=512)
-    vertices_all = mesh_full.vertices
-
-    mesh.export(os.path.join(output_dir, '%s_collect_projected_vertices_v2.obj'%images[i].split('.')[0]))
     np.savez(os.path.join(output_dir, '%s_bni_v2'%images[i].split('.')[0]), 
-                          vertices_keep=vertices_keep, vertices_all=vertices_all,
                           trans=trans.cpu().numpy(), scale=scale.cpu().numpy(),
                           pose=pose_smpl.cpu().numpy(), beta=beta_smpl.cpu().numpy(), )
     #sys.exit()

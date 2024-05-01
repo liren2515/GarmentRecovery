@@ -306,6 +306,4 @@ if __name__ == "__main__":
         smpl_related =[pose, beta, smpl_server, weight_f, weight_b, Rot_rest, pose_offsets_rest]
         transforms = [transform, transform_100]
         mesh_verts_opt = reconstruct(model_cnn_regressor, model_isp, latent_codes, [images, images_body], mask_normal, smpl_related, uv, verts_uv_cano_mean, trans, scale, transforms, body_smpl, result_path)
-
-        sys.exit()
     

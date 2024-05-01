@@ -72,6 +72,24 @@ def get_connected_paths_skirt(mesh, idx_boundary_v, boundary_edges):
 
     return return_paths
 
+def remove_path(paths, path_y_mean, path_x_mean):
+
+    paths_len = [len(p) for p in paths]
+    remove_i = paths_len.index(min(paths_len))
+
+    paths_new = []
+    path_y_mean_new = []
+    path_x_mean_new = []
+    for i in range(len(paths)):
+        if i == remove_i:
+            continue
+
+        paths_new.append(paths[i])
+        path_y_mean_new.append(path_y_mean[i])
+        path_x_mean_new.append(path_x_mean[i])
+
+    return paths_new, path_y_mean_new, path_x_mean_new
+        
 def get_connected_paths_trousers(mesh, idx_boundary_v, boundary_edges):
     idx_boundary_v_set = set(idx_boundary_v)
     one_rings = one_ring_neighour(idx_boundary_v, mesh, is_dic=True, mask_set=idx_boundary_v_set)
@@ -87,7 +105,8 @@ def get_connected_paths_trousers(mesh, idx_boundary_v, boundary_edges):
         path_x_mean.append(mesh.vertices[path, 0].mean())
     
     if len(paths) != 3:
-        raise Exception("Something wrong: len(paths) - get_connected_paths!!")
+        #raise Exception("Something wrong: len(paths) - get_connected_paths!!")
+        paths, path_y_mean, path_x_mean = remove_path(paths, path_y_mean, path_x_mean)
 
     top_path_i = path_y_mean.index(max(path_y_mean))
     top_path = paths[top_path_i]

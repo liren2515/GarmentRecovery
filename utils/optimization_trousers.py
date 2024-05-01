@@ -424,9 +424,6 @@ def optimize_vertices(mesh_prior_opt, trans, scale, body, cloth, idx_waist_v_pro
                                 {'params': scale_update, 'lr': lr},]
     )
 
-    vertices_all.requires_grad = False
-    vertices_keep.requires_grad = False
-
     vb = body.vb
     nb = body.nb
     vb.requires_grad = False

@@ -262,7 +262,7 @@ if __name__ == "__main__":
 
     images_list = sorted(os.listdir(image_dir))
 
-    for i in range(0, len(images_list)):
+    for i in range(len(images_list)):
         if not os.path.isfile(os.path.join(econ_dir, 'vid/%s_in_tensor.pt'%images_list[i].split('.')[0])):
             continue
 
@@ -313,6 +313,4 @@ if __name__ == "__main__":
         smpl_related =[pose, beta, smpl_server, weight_f, weight_b, Rot_rest, pose_offsets_rest]
         transforms = [transform, transform_100]
         mesh_verts_opt = reconstruct(model_cnn_regressor, model_isp, latent_codes, [images, images_body], mask_normal, smpl_related, uv, verts_uv_cano_mean, trans, scale, transforms, body_smpl, result_path)
-
-        sys.exit()
         

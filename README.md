@@ -12,6 +12,7 @@ You can use the scripts under `./fit` to recover garment from the prepared image
 cd fit
 python fit_xxx.py # xxx is the type of the garment.
 ```
+The output garment mesh and the body mesh are saved at `./fitting-data/XXX/result/XXX/mesh_verts_opt.obj` and `./fitting-data/XXX/result/XXX/body.obj`, respectively.
 
 ## Prepare your own data
 If you want to prepare your own data for fitting, please check [DATA_PREPARE.md](doc/DATA_PREPARE.md)
