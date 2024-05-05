@@ -1,11 +1,9 @@
 # Installation
 
 ## Setup:
- - Download checkpoints/extra-data from [here](), and unzip it to the root path of the repo.
+ - Download checkpoints/extra-data/sample-data from [here](https://drive.google.com/file/d/1hkhW7RGmlDviH2bZ4P5s5b-h4lqkrsNJ/view?usp=sharing), and unzip it to the root path of the repo.
 
  - Download and extract the SMPL model from http://smplify.is.tue.mpg.de/, and place `basicModel_f_lbs_10_207_0_v1.0.0.pkl` and `basicModel_neutral_lbs_10_207_0_v1.0.0.pkl` in the folder of `./smpl_pytorch`.
-
- - Download the sample data from [here]() for garment recovery, and unzip it to the root path.
 
 ## Installing
 
