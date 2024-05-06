@@ -12,11 +12,12 @@ Then copy `econ` to `./fitting-data/garment/processed`. The folder hierarchy sho
 ```
 ./fitting-data/garment
 └── images
-└── econ
-│   └── BNI
-│   └── obj
-|   └── png
-│   └── vid
+└── processed
+│   └── econ
+│       └── BNI
+│       └── obj
+|       └── png
+│       └── vid
 ```
 Then run
 ```
