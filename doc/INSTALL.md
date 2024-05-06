@@ -39,6 +39,7 @@
     │   └── trousers
     ├── networks    
     └── smpl_pytorch
+    └── smplx_econ
     └── snug
     └── utils
     ```
