@@ -3,8 +3,6 @@ from torch import nn, Tensor
 import torchvision.models as tvm
 from einops import rearrange
 
-torch.hub.set_dir('/scratch/cvlab/home/ren/code/hub/checkpoints/')
-
 class ConvNeXtExtractor(nn.Module):
     def __init__(self, n_stages=3, ave=False):
         super().__init__()
