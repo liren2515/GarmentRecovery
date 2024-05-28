@@ -223,7 +223,7 @@ def shrink_penalty(va, vb):
 
     return distance.mean()
 
-partsIdx = load_pkl('/scratch/cvlab/home/ren/code/cloth-from-image/extra-data/parts14_vertex_idx.pkl')
+partsIdx = load_pkl('../extra-data/parts14_vertex_idx.pkl')
 idx_leg = partsIdx[3]+partsIdx[4]+partsIdx[5]+partsIdx[6]+partsIdx[7]+partsIdx[8]
 idx_arm = partsIdx[1]+partsIdx[2]+partsIdx[9]+partsIdx[10]+partsIdx[11]+partsIdx[12]
 idx_leg = torch.LongTensor(idx_leg).cuda()
