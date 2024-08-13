@@ -65,14 +65,12 @@ for i in range(len(images)):
 ##########################
 # run convertor: smpl-x to smpl
 '''
-# Use default pytorch3d conda
-# use ic-registry.epfl.ch/cvlab/lis/lab-python-ml:cuda11
-# update 'data_folder' and 'output_folder' in /cvlabdata2/home/ren/smpl-x/smplx/config_files/smplx2smpl.yaml 
+# update 'data_folder' and 'output_folder' in ./smpl-x/smplx/config_files/smplx2smpl.yaml 
 pip install typing-extensions --upgrade 
 pip install markupsafe jinja2 loguru omegaconf
 pip install -U scikit-learn
 pip install open3d chumpy trimesh
-cd /cvlabdata2/home/ren/smpl-x/torch-trust-ncg
+cd ./smpl-x/torch-trust-ncg
 python setup.py install --user
 cd ../smplx
 sudo apt-get update
